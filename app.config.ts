@@ -9,9 +9,13 @@ const config: ExpoConfig = {
   scheme: 'languageflashcardsbank',
   userInterfaceStyle: 'automatic',
   newArchEnabled: true,
+  updates: {
+    url: 'https://u.expo.dev/1dc06005-2b36-46e6-b68c-b8db79ceafe9',
+  },
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.languageflashcardsbank.app',
+    runtimeVersion: { policy: 'appVersion' },
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSCameraUsageDescription:
