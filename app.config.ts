@@ -16,11 +16,13 @@ const config: ExpoConfig = {
       ITSAppUsesNonExemptEncryption: false,
       NSCameraUsageDescription:
         'Language Flashcards needs camera access to capture photos of German text for vocabulary extraction.',
+      NSPhotoLibraryUsageDescription:
+        'Language Flashcards reads photos from your library to extract German vocabulary.',
     },
   },
   android: {
     package: 'com.languageflashcardsbank.app',
-    permissions: ['android.permission.CAMERA'],
+    permissions: ['android.permission.CAMERA', 'android.permission.READ_EXTERNAL_STORAGE'],
     adaptiveIcon: {
       backgroundColor: '#E6F4FE',
       foregroundImage: './assets/images/android-icon-foreground.png',

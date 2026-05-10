@@ -21,6 +21,8 @@ const MAPPING = {
   'camera.fill': 'photo-camera',
   'book.fill': 'menu-book',
   'rectangle.stack.fill': 'collections-bookmark',
+  'photo.fill': 'photo',
+  'sparkles': 'auto-awesome',
 } as IconMapping;
 
 /**
