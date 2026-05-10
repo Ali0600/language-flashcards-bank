@@ -1,7 +1,7 @@
 import type { ExpoConfig } from 'expo/config';
 
 const config: ExpoConfig = {
-  name: 'language-flashcards-bank',
+  name: 'Language Flashcards',
   slug: 'language-flashcards-bank',
   version: '1.0.0',
   orientation: 'portrait',
