@@ -1,40 +1,82 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { asc, desc, eq, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lte, ne, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { cards, cardSightings, type Card } from '@/db/schema';
+import { cards, cardSightings, reviewLogs, type Card } from '@/db/schema';
+import { DEFAULT_SETTINGS, getSetting, SettingKeys } from '@/services/settings';
 
-type LoadState<T> = { loading: boolean; data: T; error: Error | null };
+type LoadState<T> = { loading: boolean; data: T; error: Error | null; refetch: () => void };
+
+function startOfDayMs(): number {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
 
 export function useDueCards(): LoadState<Card[]> {
-  const [state, setState] = useState<LoadState<Card[]>>({
+  const [state, setState] = useState<Omit<LoadState<Card[]>, 'refetch'>>({
     loading: true,
     data: [],
     error: null,
   });
+  const [version, setVersion] = useState(0);
+  const refetch = useCallback(() => setVersion((v) => v + 1), []);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      db.select()
-        .from(cards)
-        .where(lte(cards.due, Date.now()))
-        .orderBy(asc(cards.due))
-        .all()
-        .then((rows) => {
-          if (!cancelled) setState({ loading: false, data: rows, error: null });
-        })
-        .catch((e) => {
+      (async () => {
+        try {
+          const now = Date.now();
+          const limit = await getSetting<number>(
+            SettingKeys.dailyNewCardLimit,
+            DEFAULT_SETTINGS.dailyNewCardLimit,
+          );
+
+          const introducedToday = await db
+            .selectDistinct({ cardId: reviewLogs.cardId })
+            .from(reviewLogs)
+            .where(gte(reviewLogs.reviewedAt, startOfDayMs()))
+            .all();
+          const quota = Math.max(0, limit - introducedToday.length);
+
+          const nonNew = await db
+            .select()
+            .from(cards)
+            .where(and(lte(cards.due, now), ne(cards.state, 0)))
+            .orderBy(asc(cards.due))
+            .all();
+
+          let newCards: Card[] = [];
+          if (quota > 0) {
+            const freq = sql<number>`COUNT(${cardSightings.id})`.as('freq');
+            const ranked = await db
+              .select({ card: cards, freq })
+              .from(cards)
+              .leftJoin(cardSightings, eq(cardSightings.cardId, cards.id))
+              .where(and(eq(cards.state, 0), lte(cards.due, now)))
+              .groupBy(cards.id)
+              .orderBy(desc(freq), asc(cards.lemma))
+              .limit(quota)
+              .all();
+            newCards = ranked.map((r) => r.card);
+          }
+
+          if (!cancelled) {
+            setState({ loading: false, data: [...nonNew, ...newCards], error: null });
+          }
+        } catch (e) {
           if (!cancelled) setState({ loading: false, data: [], error: e as Error });
-        });
+        }
+      })();
       return () => {
         cancelled = true;
       };
-    }, []),
+    }, [version]),
   );
 
-  return state;
+  return { ...state, refetch };
 }
 
 export type LibrarySort = 'alphabetical' | 'due' | 'frequency';
@@ -42,11 +84,13 @@ export type LibrarySort = 'alphabetical' | 'due' | 'frequency';
 export type CardWithFreq = Card & { sightingCount: number };
 
 export function useLibrary(sort: LibrarySort): LoadState<CardWithFreq[]> {
-  const [state, setState] = useState<LoadState<CardWithFreq[]>>({
+  const [state, setState] = useState<Omit<LoadState<CardWithFreq[]>, 'refetch'>>({
     loading: true,
     data: [],
     error: null,
   });
+  const [version, setVersion] = useState(0);
+  const refetch = useCallback(() => setVersion((v) => v + 1), []);
 
   useFocusEffect(
     useCallback(() => {
@@ -83,18 +127,20 @@ export function useLibrary(sort: LibrarySort): LoadState<CardWithFreq[]> {
       return () => {
         cancelled = true;
       };
-    }, [sort]),
+    }, [sort, version]),
   );
 
-  return state;
+  return { ...state, refetch };
 }
 
 export function useCard(id: string | undefined): LoadState<Card | null> {
-  const [state, setState] = useState<LoadState<Card | null>>({
+  const [state, setState] = useState<Omit<LoadState<Card | null>, 'refetch'>>({
     loading: true,
     data: null,
     error: null,
   });
+  const [version, setVersion] = useState(0);
+  const refetch = useCallback(() => setVersion((v) => v + 1), []);
 
   useFocusEffect(
     useCallback(() => {
@@ -119,20 +165,22 @@ export function useCard(id: string | undefined): LoadState<Card | null> {
       return () => {
         cancelled = true;
       };
-    }, [id]),
+    }, [id, version]),
   );
 
-  return state;
+  return { ...state, refetch };
 }
 
 export type FrequentNewCard = Card & { sightingCount: number };
 
 export function useFrequencyRanking(limit: number = 5): LoadState<FrequentNewCard[]> {
-  const [state, setState] = useState<LoadState<FrequentNewCard[]>>({
+  const [state, setState] = useState<Omit<LoadState<FrequentNewCard[]>, 'refetch'>>({
     loading: true,
     data: [],
     error: null,
   });
+  const [version, setVersion] = useState(0);
+  const refetch = useCallback(() => setVersion((v) => v + 1), []);
 
   useFocusEffect(
     useCallback(() => {
@@ -162,10 +210,10 @@ export function useFrequencyRanking(limit: number = 5): LoadState<FrequentNewCar
       return () => {
         cancelled = true;
       };
-    }, [limit]),
+    }, [limit, version]),
   );
 
-  return state;
+  return { ...state, refetch };
 }
 
 export function useCardSightings(cardId: string | undefined) {

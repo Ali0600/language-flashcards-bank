@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -88,6 +89,15 @@ export default function StudyScreen() {
 
   const onRate = async (rating: ReviewRating) => {
     if (submitting) return;
+    if (rating === Rating.Again) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } else if (rating === Rating.Hard) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    } else if (rating === Rating.Good) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
     setSubmitting(true);
     try {
       await rateCard(card.id, rating);

@@ -1,17 +1,47 @@
 import { useRouter } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useStats } from '@/hooks/use-stats';
+import { exportCardsToCsv } from '@/services/export';
 
 export default function StatsScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const tint = Colors[colorScheme].tint;
-  const { stats, loading } = useStats();
+  const { stats, loading, refetch } = useStats();
+  const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    refetch();
+    setTimeout(() => setRefreshing(false), 400);
+  };
+
+  const onExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      await exportCardsToCsv();
+    } catch (e) {
+      Alert.alert('Export failed', e instanceof Error ? e.message : String(e));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -22,7 +52,10 @@ export default function StatsScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={tint} />}>
       <View style={styles.grid}>
         <Tile label="Total cards" value={stats.totalCards} tint={tint} />
         <Tile label="Photos taken" value={stats.totalPhotos} tint={tint} />
@@ -77,6 +110,19 @@ export default function StatsScreen() {
           ))}
         </Section>
       )}
+
+      <Pressable
+        onPress={onExport}
+        disabled={exporting || stats.totalCards === 0}
+        style={[
+          styles.exportBtn,
+          { borderColor: tint },
+          (exporting || stats.totalCards === 0) && styles.exportBtnDisabled,
+        ]}>
+        <ThemedText style={{ color: tint, fontWeight: '600' }}>
+          {exporting ? 'Exporting…' : 'Export cards to CSV'}
+        </ThemedText>
+      </Pressable>
     </ScrollView>
   );
 }
@@ -155,4 +201,12 @@ const styles = StyleSheet.create({
   gender: { opacity: 0.6, fontSize: 14 },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
   badgeText: { color: 'white', fontSize: 12, fontWeight: '700' },
+  exportBtn: {
+    marginTop: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  exportBtnDisabled: { opacity: 0.4 },
 });

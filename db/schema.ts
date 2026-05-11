@@ -81,6 +81,12 @@ export const reviewLogs = sqliteTable(
   (table) => [index('review_logs_card_idx').on(table.cardId)],
 );
 
+export const settings = sqliteTable('settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: integer('updated_at').notNull().default(sql`(unixepoch() * 1000)`),
+});
+
 export type Photo = typeof photos.$inferSelect;
 export type NewPhoto = typeof photos.$inferInsert;
 export type Card = typeof cards.$inferSelect;
@@ -89,3 +95,4 @@ export type CardSighting = typeof cardSightings.$inferSelect;
 export type NewCardSighting = typeof cardSightings.$inferInsert;
 export type ReviewLog = typeof reviewLogs.$inferSelect;
 export type NewReviewLog = typeof reviewLogs.$inferInsert;
+export type Setting = typeof settings.$inferSelect;

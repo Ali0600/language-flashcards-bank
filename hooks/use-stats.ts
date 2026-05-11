@@ -37,6 +37,8 @@ const EMPTY: Stats = {
 export function useStats() {
   const [stats, setStats] = useState<Stats>(EMPTY);
   const [loading, setLoading] = useState(true);
+  const [version, setVersion] = useState(0);
+  const refetch = useCallback(() => setVersion((v) => v + 1), []);
 
   useFocusEffect(
     useCallback(() => {
@@ -123,8 +125,8 @@ export function useStats() {
       return () => {
         cancelled = true;
       };
-    }, []),
+    }, [version]),
   );
 
-  return { stats, loading };
+  return { stats, loading, refetch };
 }

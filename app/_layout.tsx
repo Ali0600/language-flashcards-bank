@@ -86,6 +86,10 @@ export default function RootLayout() {
           name="photo/[id]"
           options={{ presentation: 'modal', headerShown: true, title: 'Photo' }}
         />
+        <Stack.Screen
+          name="settings"
+          options={{ presentation: 'modal', headerShown: true, title: 'Settings' }}
+        />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>
