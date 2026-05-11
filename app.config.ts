@@ -12,10 +12,10 @@ const config: ExpoConfig = {
   updates: {
     url: 'https://u.expo.dev/1dc06005-2b36-46e6-b68c-b8db79ceafe9',
   },
+  runtimeVersion: { policy: 'appVersion' },
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.languageflashcardsbank.app',
-    runtimeVersion: { policy: 'appVersion' },
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSCameraUsageDescription:
