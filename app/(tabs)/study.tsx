@@ -7,12 +7,14 @@ import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useDueCards, useFrequencyRanking, type FrequentNewCard } from '@/hooks/use-cards';
+import { rateCard, type ReviewRating } from '@/services/review';
+import { Rating } from '@/services/scheduler';
 
-const RATINGS = [
-  { label: 'Again', rating: 1, color: '#E74C3C' },
-  { label: 'Hard', rating: 2, color: '#F39C12' },
-  { label: 'Good', rating: 3, color: '#27AE60' },
-  { label: 'Easy', rating: 4, color: '#2980B9' },
+const RATINGS: { label: string; rating: ReviewRating; color: string }[] = [
+  { label: 'Again', rating: Rating.Again, color: '#E74C3C' },
+  { label: 'Hard', rating: Rating.Hard, color: '#F39C12' },
+  { label: 'Good', rating: Rating.Good, color: '#27AE60' },
+  { label: 'Easy', rating: Rating.Easy, color: '#2980B9' },
 ];
 
 export default function StudyScreen() {
@@ -23,6 +25,8 @@ export default function StudyScreen() {
   const { data: suggested } = useFrequencyRanking(5);
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [sessionCount, setSessionCount] = useState(0);
 
   if (loading) {
     return (
@@ -59,15 +63,41 @@ export default function StudyScreen() {
     );
   }
 
-  const card = dueCards[index % dueCards.length];
-  const isLast = index >= dueCards.length - 1;
+  if (index >= dueCards.length) {
+    return (
+      <ThemedView style={styles.center}>
+        <ThemedText type="title">Session complete</ThemedText>
+        <ThemedText style={styles.empty}>
+          Reviewed {sessionCount} card{sessionCount === 1 ? '' : 's'}. Come back later when more
+          are due.
+        </ThemedText>
+        <Pressable
+          style={[styles.detailBtn, { borderColor: tint, marginTop: 16, paddingHorizontal: 24 }]}
+          onPress={() => {
+            setIndex(0);
+            setSessionCount(0);
+            setRevealed(false);
+          }}>
+          <ThemedText>Start over</ThemedText>
+        </Pressable>
+      </ThemedView>
+    );
+  }
 
-  const advance = () => {
-    setRevealed(false);
-    if (isLast) {
-      setIndex(0);
-    } else {
+  const card = dueCards[index];
+
+  const onRate = async (rating: ReviewRating) => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await rateCard(card.id, rating);
+      setRevealed(false);
       setIndex((i) => i + 1);
+      setSessionCount((n) => n + 1);
+    } catch (e) {
+      console.error('rateCard failed', e);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -83,9 +113,7 @@ export default function StudyScreen() {
       <Pressable
         style={[styles.card, { borderColor: tint }]}
         onPress={() => setRevealed((r) => !r)}>
-        {card.gender && (
-          <ThemedText style={styles.gender}>{card.gender}</ThemedText>
-        )}
+        {card.gender && <ThemedText style={styles.gender}>{card.gender}</ThemedText>}
         <ThemedText type="title" style={styles.lemma}>
           {card.lemma}
         </ThemedText>
@@ -114,8 +142,9 @@ export default function StudyScreen() {
           RATINGS.map((r) => (
             <Pressable
               key={r.label}
-              style={[styles.ratingBtn, { backgroundColor: r.color }]}
-              onPress={advance}>
+              disabled={submitting}
+              style={[styles.ratingBtn, { backgroundColor: r.color }, submitting && styles.btnDisabled]}
+              onPress={() => onRate(r.rating)}>
               <ThemedText style={styles.ratingLabel}>{r.label}</ThemedText>
             </Pressable>
           ))
@@ -248,6 +277,7 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
   },
+  btnDisabled: { opacity: 0.5 },
   detailBtn: {
     flex: 1,
     paddingVertical: 14,
