@@ -74,6 +74,10 @@ GROUP BY c.id ORDER BY freq DESC;
 - `CocoaPods` requires `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8` set in the shell or `pod install` errors with `Encoding::CompatibilityError` (Ruby 4 + CocoaPods 1.16). EAS Build handles this server-side; only matters if running `pod install` locally.
 - Node is installed via `fnm`. Shell needs `eval "$(fnm env --shell zsh)"` before `node`/`npm`/`eas`/`expo` resolve. Consider adding it to `~/.zshrc`.
 
+## Library Documentation
+
+Use Context7 (`resolve-library-id` then `query-docs`) before writing non-trivial calls against any library — Drizzle, Expo, expo-router, React Native, ts-fsrs, op-sqlite, the Gemini SDK, etc. Don't rely on training data; the canonical failure is misremembering an ORM's query-builder overloads or an SDK's option shape. Fetch the docs first; pattern-match second. This applies even when you "know" the API — versions drift, and Context7 is the cheap diagnostic.
+
 ## OTA vs. Native Changes
 
 This project uses EAS Update for OTA. After making code changes, tell the user if the change is a **native change** that requires a new EAS build (and TestFlight submission). If it's JS-only and can be pushed via `eas update --branch production --platform ios`, no need to mention it.
