@@ -1,3 +1,4 @@
+import { setAudioModeAsync } from 'expo-audio';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useMigrations } from 'drizzle-orm/op-sqlite/migrator';
 import { Stack } from 'expo-router';
@@ -29,6 +30,12 @@ export default function RootLayout() {
         .finally(() => setSeeded(true));
     }
   }, [success, seeded]);
+
+  useEffect(() => {
+    setAudioModeAsync({ playsInSilentMode: true }).catch((e) =>
+      console.error('setAudioModeAsync failed', e),
+    );
+  }, []);
 
   useEffect(() => {
     const checkForOTAUpdate = async () => {
