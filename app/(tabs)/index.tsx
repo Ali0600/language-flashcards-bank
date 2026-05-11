@@ -1,177 +1,119 @@
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
+import { OtaDebugBadge } from '@/components/ota-debug-badge';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { processPhoto } from '@/services/pipeline';
+import { useLibrary, type LibrarySort, type CardWithFreq } from '@/hooks/use-cards';
 
-export default function CaptureScreen() {
+const SORTS: { key: LibrarySort; label: string }[] = [
+  { key: 'frequency', label: 'Frequency' },
+  { key: 'alphabetical', label: 'A–Z' },
+  { key: 'due', label: 'Due' },
+];
+
+export default function LibraryScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const tint = Colors[colorScheme].tint;
-
-  const [permission, requestPermission] = useCameraPermissions();
-  const cameraRef = useRef<CameraView>(null);
-  const [processing, setProcessing] = useState(false);
-  const [processingMessage, setProcessingMessage] = useState('Analyzing photo…');
-
-  const runPipeline = async (uri: string) => {
-    setProcessing(true);
-    setProcessingMessage('Analyzing photo…');
-    try {
-      const outcome = await processPhoto(uri);
-      router.push(`/scan/${outcome.photoId}`);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      Alert.alert('Could not analyze photo', message);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const onShutter = async () => {
-    if (!cameraRef.current || processing) return;
-    try {
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.7,
-        skipProcessing: false,
-      });
-      if (photo?.uri) await runPipeline(photo.uri);
-    } catch (e) {
-      Alert.alert('Capture failed', e instanceof Error ? e.message : String(e));
-    }
-  };
-
-  const onPick = async () => {
-    if (processing) return;
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.7,
-    });
-    if (!result.canceled && result.assets[0]?.uri) {
-      await runPipeline(result.assets[0].uri);
-    }
-  };
-
-  if (!permission) {
-    return (
-      <ThemedView style={styles.center}>
-        <ActivityIndicator />
-      </ThemedView>
-    );
-  }
-
-  if (!permission.granted) {
-    return (
-      <ThemedView style={styles.center}>
-        <IconSymbol name="camera.fill" size={56} color={tint} />
-        <ThemedText type="title">Camera access needed</ThemedText>
-        <ThemedText style={styles.permissionBody}>
-          Allow camera access so we can extract German vocabulary from photos.
-        </ThemedText>
-        <Pressable
-          style={[styles.primaryBtn, { backgroundColor: tint }]}
-          onPress={requestPermission}>
-          <ThemedText style={styles.primaryBtnText}>Grant access</ThemedText>
-        </Pressable>
-        <Pressable style={styles.linkBtn} onPress={onPick}>
-          <ThemedText>Pick from photo library instead</ThemedText>
-        </Pressable>
-      </ThemedView>
-    );
-  }
+  const [sort, setSort] = useState<LibrarySort>('frequency');
+  const { loading, data, error } = useLibrary(sort);
 
   return (
-    <View style={styles.container}>
-      <CameraView ref={cameraRef} style={styles.camera} facing="back" />
-      <View style={styles.controls}>
-        <Pressable
-          accessibilityRole="button"
-          style={styles.libraryBtn}
-          onPress={onPick}
-          disabled={processing}>
-          <IconSymbol name="photo.fill" size={28} color="white" />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          style={[styles.shutter, processing && styles.shutterDisabled]}
-          onPress={onShutter}
-          disabled={processing}>
-          <View style={styles.shutterInner} />
-        </Pressable>
-        <View style={styles.controlsSpacer} />
+    <ThemedView style={styles.container}>
+      <View style={styles.sortRow}>
+        {SORTS.map((s) => (
+          <Pressable
+            key={s.key}
+            onPress={() => setSort(s.key)}
+            style={[
+              styles.sortChip,
+              { borderColor: tint },
+              sort === s.key && { backgroundColor: tint },
+            ]}>
+            <ThemedText
+              style={[
+                styles.sortChipText,
+                sort === s.key && { color: 'white' },
+              ]}>
+              {s.label}
+            </ThemedText>
+          </Pressable>
+        ))}
       </View>
-      {processing && (
-        <View style={styles.processingOverlay}>
-          <ActivityIndicator size="large" color="white" />
-          <ThemedText style={styles.processingText}>{processingMessage}</ThemedText>
-        </View>
+
+      {loading ? (
+        <ActivityIndicator style={{ marginTop: 32 }} />
+      ) : error ? (
+        <ThemedText style={styles.error}>Error: {error.message}</ThemedText>
+      ) : data.length === 0 ? (
+        <ThemedText style={styles.empty}>No cards yet — capture a photo to start.</ThemedText>
+      ) : (
+        <FlatList
+          data={data}
+          keyExtractor={(c) => c.id}
+          renderItem={({ item }) => (
+            <CardRow item={item} onPress={() => router.push(`/card/${item.id}`)} />
+          )}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          ListFooterComponent={<OtaDebugBadge />}
+        />
       )}
-    </View>
+    </ThemedView>
+  );
+}
+
+function CardRow({ item, onPress }: { item: CardWithFreq; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={styles.row}>
+      <View style={styles.rowLeft}>
+        <View style={styles.rowTitleLine}>
+          {item.gender && <ThemedText style={styles.gender}>{item.gender}</ThemedText>}
+          <ThemedText type="defaultSemiBold" style={styles.lemma}>
+            {item.lemma}
+          </ThemedText>
+        </View>
+        {item.translationEn && (
+          <ThemedText style={styles.translation} numberOfLines={1}>
+            {item.translationEn}
+          </ThemedText>
+        )}
+      </View>
+      <View style={styles.rowRight}>
+        <ThemedText style={styles.freq}>×{item.sightingCount}</ThemedText>
+      </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: 'black' },
-  camera: { flex: 1 },
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    gap: 12,
+  container: { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
+  sortRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  sortChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
   },
-  permissionBody: { textAlign: 'center', maxWidth: 320, opacity: 0.7, lineHeight: 22 },
-  primaryBtn: { paddingVertical: 12, paddingHorizontal: 28, borderRadius: 999, marginTop: 8 },
-  primaryBtnText: { color: 'white', fontWeight: '600' },
-  linkBtn: { marginTop: 12, padding: 8 },
-  controls: {
-    position: 'absolute',
-    bottom: 32,
-    left: 0,
-    right: 0,
+  sortChipText: { fontSize: 14 },
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingHorizontal: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    gap: 12,
   },
-  libraryBtn: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  controlsSpacer: { width: 56, height: 56 },
-  shutter: {
-    width: 78,
-    height: 78,
-    borderRadius: 39,
-    borderWidth: 4,
-    borderColor: 'white',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  shutterDisabled: { opacity: 0.5 },
-  shutterInner: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
-    backgroundColor: 'white',
-  },
-  processingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-  },
-  processingText: { color: 'white', fontSize: 16 },
+  rowLeft: { flex: 1, gap: 4 },
+  rowTitleLine: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
+  gender: { opacity: 0.6, fontSize: 15 },
+  lemma: { fontSize: 18 },
+  translation: { opacity: 0.7, fontSize: 14 },
+  rowRight: { alignItems: 'flex-end' },
+  freq: { fontVariant: ['tabular-nums'], opacity: 0.6 },
+  separator: { height: StyleSheet.hairlineWidth, backgroundColor: '#888', opacity: 0.2 },
+  empty: { textAlign: 'center', marginTop: 48, opacity: 0.6 },
+  error: { color: 'red', marginTop: 32 },
 });
