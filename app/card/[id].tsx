@@ -263,9 +263,13 @@ export default function CardDetailScreen() {
               Seen {sightings.length} time{sightings.length === 1 ? '' : 's'}
             </ThemedText>
             {sightings.slice(0, 5).map((s, i) => (
-              <ThemedText key={`${s.photoId}-${i}`} style={styles.sighting}>
-                {`"${s.surfaceForm}" — ${new Date(s.seenAt).toLocaleDateString()}`}
-              </ThemedText>
+              <Pressable
+                key={`${s.photoId}-${i}`}
+                onPress={() => router.push(`/photo/${s.photoId}` as never)}>
+                <ThemedText style={[styles.sighting, styles.sightingLink]}>
+                  {`"${s.surfaceForm}" — ${new Date(s.seenAt).toLocaleDateString()} ›`}
+                </ThemedText>
+              </Pressable>
             ))}
           </Section>
 
@@ -346,6 +350,7 @@ const styles = StyleSheet.create({
   exampleDe: { fontStyle: 'italic' },
   exampleEn: { opacity: 0.65 },
   sighting: { opacity: 0.7, fontSize: 14 },
+  sightingLink: { paddingVertical: 4 },
   mono: { fontFamily: 'Courier', fontSize: 13, opacity: 0.7 },
   editActions: { flexDirection: 'row', gap: 12, marginTop: 8 },
   secondaryBtn: {

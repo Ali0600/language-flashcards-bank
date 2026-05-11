@@ -82,6 +82,10 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="scan/[id]" options={{ title: 'Scan results' }} />
         <Stack.Screen name="card/[id]" options={{ title: 'Card' }} />
+        <Stack.Screen
+          name="photo/[id]"
+          options={{ presentation: 'modal', headerShown: true, title: 'Photo' }}
+        />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>

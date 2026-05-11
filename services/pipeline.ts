@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import { Directory, File, Paths } from 'expo-file-system';
 import uuid from 'react-native-uuid';
 
 import { db } from '@/db/client';
@@ -12,6 +13,15 @@ import { analyzeImage } from './vision';
 
 function id(): string {
   return uuid.v4() as string;
+}
+
+function persistPhoto(sourceUri: string, photoId: string): string {
+  const photosDir = new Directory(Paths.document, 'photos');
+  photosDir.create({ intermediates: true, idempotent: true });
+  const ext = sourceUri.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  const dest = new File(photosDir, `${photoId}.${ext}`);
+  new File(sourceUri).copy(dest);
+  return dest.uri;
 }
 
 export type ScanOutcome = {
@@ -53,10 +63,12 @@ export async function processPhoto(imageUri: string): Promise<ScanOutcome> {
   const filtered = analyzed.filter(shouldKeepWord);
   const deduped = dedupeByLemma(filtered);
 
+  const permanentUri = persistPhoto(imageUri, photoId);
+
   await db.insert(photos).values({
     id: photoId,
     takenAt: now,
-    imageUri,
+    imageUri: permanentUri,
     rawOcrText: rawText,
     ocrSource: source,
   });

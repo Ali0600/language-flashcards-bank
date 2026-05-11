@@ -2,7 +2,6 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
-import { OtaDebugBadge } from '@/components/ota-debug-badge';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
@@ -59,7 +58,6 @@ export default function LibraryScreen() {
             <CardRow item={item} onPress={() => router.push(`/card/${item.id}`)} />
           )}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
-          ListFooterComponent={<OtaDebugBadge />}
         />
       )}
     </ThemedView>

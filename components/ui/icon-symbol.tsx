@@ -23,6 +23,7 @@ const MAPPING = {
   'rectangle.stack.fill': 'collections-bookmark',
   'photo.fill': 'photo',
   'sparkles': 'auto-awesome',
+  'chart.bar.fill': 'bar-chart',
 } as IconMapping;
 
 /**
