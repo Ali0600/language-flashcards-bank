@@ -2,8 +2,9 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { useMigrations } from 'drizzle-orm/op-sqlite/migrator';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as Updates from 'expo-updates';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { db } from '@/db/client';
@@ -28,6 +29,35 @@ export default function RootLayout() {
         .finally(() => setSeeded(true));
     }
   }, [success, seeded]);
+
+  useEffect(() => {
+    const checkForOTAUpdate = async () => {
+      if (__DEV__ || !Updates.isEnabled) return;
+      try {
+        const result = await Updates.checkForUpdateAsync();
+        if (!result.isAvailable) return;
+        await Updates.fetchUpdateAsync();
+        Alert.alert(
+          'Update Ready',
+          'A new version of Language Flashcards is ready to install.',
+          [
+            { text: 'Later', style: 'cancel' },
+            {
+              text: 'Reload',
+              onPress: () => {
+                Updates.reloadAsync().catch((err) =>
+                  console.error('Reload after update failed:', err),
+                );
+              },
+            },
+          ],
+        );
+      } catch (error) {
+        console.error('OTA update check failed:', error);
+      }
+    };
+    checkForOTAUpdate();
+  }, []);
 
   if (error) {
     return (
