@@ -1,6 +1,7 @@
 import { File } from 'expo-file-system';
 import { GoogleGenAI, Type } from '@google/genai';
 
+import { FOLDER_SLUGS, normalizeCategory, type FolderSlug } from '@/constants/folders';
 import { assertGeminiKey } from '@/lib/env';
 import type { WordAnalysis } from '@/lib/types';
 
@@ -26,14 +27,16 @@ const responseSchema = {
   properties: {
     rawText: { type: Type.STRING },
     words: { type: Type.ARRAY, items: wordSchema },
+    category: { type: Type.STRING, enum: FOLDER_SLUGS as unknown as string[] },
   },
-  required: ['rawText', 'words'],
+  required: ['rawText', 'words', 'category'],
 };
 
 const SYSTEM_PROMPT = `You are a German vocabulary extractor for a language-learning app.
-Given an image (food packaging, a poster, a sign, a household label), do TWO things:
+Given an image (food packaging, a poster, a sign, a household label), do THREE things:
 1. Transcribe all visible German text into "rawText".
 2. Extract every distinct content word into "words" with linguistic analysis.
+3. Classify the overall scene into one "category".
 
 Rules for words:
 - "surface" is the form as it appears in the image.
@@ -44,7 +47,21 @@ Rules for words:
 - Brand names: include but mark pos="propn".
 - Skip duplicates (same lemma).
 - "exampleDe" / "exampleEn": short natural sentence demonstrating use.
-- "plural" for nouns only; empty string otherwise.`;
+- "plural" for nouns only; empty string otherwise.
+
+Rules for category (pick exactly one):
+- "food_drink_packaging": boxes, cans, bottles, ingredient labels, grocery items.
+- "cooking_recipes": cooking instructions, recipe cards, baking directions, kitchen text.
+- "household_items": cleaning supplies, toiletries, appliance labels (non-electronic).
+- "signs_notices": street signs, posters, warnings, store signage, public notices.
+- "transport_travel": trains, buses, tickets, maps, station boards, travel info.
+- "health_personal_care": medications, pharmacy, body products, first aid.
+- "documents_mail": letters, forms, bills, receipts, official paperwork.
+- "clothing_textiles": clothing tags, care labels, fashion text.
+- "electronics_appliances": device manuals, tech packaging, electronic appliance labels.
+- "outdoor_nature": parks, trails, gardening, weather, outdoor signs.
+- "other": anything that does not clearly fit one of the above.
+Pick the single best fit. If unsure, use "other".`;
 
 function normalizeGender(g: string): WordAnalysis['gender'] {
   if (g === 'der' || g === 'die' || g === 'das') return g;
@@ -54,6 +71,7 @@ function normalizeGender(g: string): WordAnalysis['gender'] {
 export type VisionResult = {
   rawText: string;
   words: WordAnalysis[];
+  category: FolderSlug | null;
 };
 
 export async function analyzeImage(imageUri: string): Promise<VisionResult> {
@@ -82,7 +100,7 @@ export async function analyzeImage(imageUri: string): Promise<VisionResult> {
   });
 
   const text = response.text;
-  if (!text) return { rawText: '', words: [] };
+  if (!text) return { rawText: '', words: [], category: null };
 
   const parsed = JSON.parse(text) as {
     rawText: string;
@@ -96,6 +114,7 @@ export async function analyzeImage(imageUri: string): Promise<VisionResult> {
       exampleEn: string;
       plural?: string;
     }>;
+    category?: string;
   };
 
   return {
@@ -110,5 +129,6 @@ export async function analyzeImage(imageUri: string): Promise<VisionResult> {
       exampleEn: p.exampleEn,
       plural: p.plural && p.plural.length > 0 ? p.plural : null,
     })),
+    category: normalizeCategory(parsed.category),
   };
 }

@@ -27,6 +27,18 @@ const MAPPING = {
   'gearshape.fill': 'settings',
   'xmark.circle.fill': 'cancel',
   'speaker.wave.2.fill': 'volume-up',
+  'shippingbox.fill': 'inventory-2',
+  'fork.knife': 'restaurant',
+  'signpost.right.fill': 'signpost',
+  'tram.fill': 'train',
+  'cross.case.fill': 'medical-services',
+  'doc.fill': 'description',
+  'tshirt.fill': 'checkroom',
+  'tv.fill': 'devices',
+  'leaf.fill': 'park',
+  'square.stack.fill': 'apps',
+  'questionmark.folder.fill': 'folder-open',
+  'folder.fill': 'folder',
 } as IconMapping;
 
 /**

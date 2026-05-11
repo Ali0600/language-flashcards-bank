@@ -47,12 +47,14 @@ export async function processPhoto(imageUri: string): Promise<ScanOutcome> {
   let analyzed: WordAnalysis[];
   let rawText: string;
   let source: 'mlkit' | 'gemini-vision';
+  let category: string | null = null;
 
   if (verdict.shouldUseLlm) {
     const visionResult = await analyzeImage(imageUri);
     analyzed = visionResult.words;
     rawText = visionResult.rawText;
     source = 'gemini-vision';
+    category = visionResult.category;
   } else {
     const surfaces = uniqueStrings(ocr.elements.map((e) => e.text));
     analyzed = await analyzeWords(surfaces);
@@ -71,6 +73,7 @@ export async function processPhoto(imageUri: string): Promise<ScanOutcome> {
     imageUri: permanentUri,
     rawOcrText: rawText,
     ocrSource: source,
+    category,
   });
 
   const results: ScanOutcome['results'] = [];
