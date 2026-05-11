@@ -12,6 +12,7 @@ export default function ScanResultsScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const tint = Colors[colorScheme].tint;
+  const onTint = Colors[colorScheme].background;
   const { loading, photo, rows, error } = useScan(id);
 
   if (loading) {
@@ -66,7 +67,12 @@ export default function ScanResultsScreen() {
           data={rows}
           keyExtractor={(r) => r.sightingId}
           renderItem={({ item }) => (
-            <Row item={item} tint={tint} onPress={() => router.push(`/card/${item.cardId}`)} />
+            <Row
+              item={item}
+              tint={tint}
+              onTint={onTint}
+              onPress={() => router.push(`/card/${item.cardId}`)}
+            />
           )}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           contentContainerStyle={styles.list}
@@ -76,7 +82,7 @@ export default function ScanResultsScreen() {
       <Pressable
         style={[styles.doneBtn, { backgroundColor: tint }]}
         onPress={() => router.dismissTo('/(tabs)')}>
-        <ThemedText style={styles.doneBtnText}>Done</ThemedText>
+        <ThemedText style={[styles.doneBtnText, { color: onTint }]}>Done</ThemedText>
       </Pressable>
     </ThemedView>
   );
@@ -85,10 +91,12 @@ export default function ScanResultsScreen() {
 function Row({
   item,
   tint,
+  onTint,
   onPress,
 }: {
   item: ScanRow;
   tint: string;
+  onTint: string;
   onPress: () => void;
 }) {
   const isNew = item.totalSightings === 1;
@@ -113,7 +121,7 @@ function Row({
       <View style={styles.rowRight}>
         {isNew ? (
           <View style={[styles.badge, { backgroundColor: tint }]}>
-            <ThemedText style={styles.badgeText}>NEW</ThemedText>
+            <ThemedText style={[styles.badgeText, { color: onTint }]}>NEW</ThemedText>
           </View>
         ) : (
           <ThemedText style={styles.subtle}>×{item.totalSightings}</ThemedText>
@@ -142,7 +150,7 @@ const styles = StyleSheet.create({
   translation: { opacity: 0.7, fontSize: 14 },
   rowRight: { alignItems: 'flex-end', justifyContent: 'center' },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
-  badgeText: { color: 'white', fontSize: 11, fontWeight: '700' },
+  badgeText: { fontSize: 11, fontWeight: '700' },
   separator: { height: StyleSheet.hairlineWidth, backgroundColor: '#888', opacity: 0.2 },
   doneBtn: {
     position: 'absolute',
@@ -153,5 +161,5 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
   },
-  doneBtnText: { color: 'white', fontWeight: '600', fontSize: 16 },
+  doneBtnText: { fontWeight: '600', fontSize: 16 },
 });

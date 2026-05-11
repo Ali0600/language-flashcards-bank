@@ -21,6 +21,7 @@ export default function StatsScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const tint = Colors[colorScheme].tint;
+  const onTint = Colors[colorScheme].background;
   const { stats, loading, refetch } = useStats();
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -104,7 +105,9 @@ export default function StatsScreen() {
                 <ThemedText type="defaultSemiBold">{row.lemma}</ThemedText>
               </View>
               <View style={[styles.badge, { backgroundColor: tint }]}>
-                <ThemedText style={styles.badgeText}>×{row.sightingCount}</ThemedText>
+                <ThemedText style={[styles.badgeText, { color: onTint }]}>
+                  ×{row.sightingCount}
+                </ThemedText>
               </View>
             </Pressable>
           ))}
@@ -200,7 +203,7 @@ const styles = StyleSheet.create({
   topRowLeft: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
   gender: { opacity: 0.6, fontSize: 14 },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
-  badgeText: { color: 'white', fontSize: 12, fontWeight: '700' },
+  badgeText: { fontSize: 12, fontWeight: '700' },
   exportBtn: {
     marginTop: 16,
     paddingVertical: 14,

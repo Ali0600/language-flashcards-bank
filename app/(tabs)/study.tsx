@@ -22,6 +22,7 @@ export default function StudyScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const tint = Colors[colorScheme].tint;
+  const onTint = Colors[colorScheme].background;
   const { loading, data: dueCards, error } = useDueCards();
   const { data: suggested } = useFrequencyRanking(5);
   const [index, setIndex] = useState(0);
@@ -57,7 +58,7 @@ export default function StudyScreen() {
             <ThemedText type="subtitle" style={styles.suggestedHeader}>
               Suggested next
             </ThemedText>
-            <SuggestedRail items={suggested} tint={tint} onTap={(c) => router.push(`/card/${c.id}`)} />
+            <SuggestedRail items={suggested} tint={tint} onTint={onTint} onTap={(c) => router.push(`/card/${c.id}`)} />
           </View>
         )}
       </ThemedView>
@@ -114,7 +115,7 @@ export default function StudyScreen() {
   return (
     <ThemedView style={styles.container}>
       {suggested.length > 0 && (
-        <SuggestedRail items={suggested} tint={tint} onTap={(c) => router.push(`/card/${c.id}`)} />
+        <SuggestedRail items={suggested} tint={tint} onTint={onTint} onTap={(c) => router.push(`/card/${c.id}`)} />
       )}
       <ThemedText style={styles.progress}>
         {index + 1} / {dueCards.length}
@@ -173,10 +174,12 @@ export default function StudyScreen() {
 function SuggestedRail({
   items,
   tint,
+  onTint,
   onTap,
 }: {
   items: FrequentNewCard[];
   tint: string;
+  onTint: string;
   onTap: (card: FrequentNewCard) => void;
 }) {
   return (
@@ -196,7 +199,9 @@ function SuggestedRail({
               {c.lemma}
             </ThemedText>
             <View style={[styles.railBadge, { backgroundColor: tint }]}>
-              <ThemedText style={styles.railBadgeText}>×{c.sightingCount}</ThemedText>
+              <ThemedText style={[styles.railBadgeText, { color: onTint }]}>
+                ×{c.sightingCount}
+              </ThemedText>
             </View>
           </Pressable>
         ))}
@@ -311,7 +316,7 @@ const styles = StyleSheet.create({
   railGender: { fontSize: 13, opacity: 0.6 },
   railLemma: { fontSize: 15 },
   railBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999 },
-  railBadgeText: { color: 'white', fontSize: 11, fontWeight: '700' },
+  railBadgeText: { fontSize: 11, fontWeight: '700' },
   suggestedBlock: { width: '100%', marginTop: 24, gap: 8 },
   suggestedHeader: { textAlign: 'center', fontSize: 16, opacity: 0.85 },
 });

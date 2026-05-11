@@ -27,6 +27,8 @@ export default function LibraryScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const tint = Colors[colorScheme].tint;
+  const textColor = Colors[colorScheme].text;
+  const bgColor = Colors[colorScheme].background;
   const [sort, setSort] = useState<LibrarySort>('frequency');
   const [query, setQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -53,7 +55,7 @@ export default function LibraryScreen() {
       <View style={styles.topRow}>
         <View style={[styles.search, { borderColor: tint }]}>
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: textColor }]}
             placeholder="Search lemma or translation"
             placeholderTextColor="rgba(150,150,150,0.7)"
             autoCapitalize="none"
@@ -87,7 +89,7 @@ export default function LibraryScreen() {
             <ThemedText
               style={[
                 styles.sortChipText,
-                sort === s.key && { color: 'white' },
+                sort === s.key && { color: bgColor },
               ]}>
               {s.label}
             </ThemedText>

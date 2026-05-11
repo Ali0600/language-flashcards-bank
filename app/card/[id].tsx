@@ -24,6 +24,8 @@ export default function CardDetailScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const tint = Colors[colorScheme].tint;
+  const textColor = Colors[colorScheme].text;
+  const onTint = Colors[colorScheme].background;
 
   const { loading, data: card, error } = useCard(id);
   const sightings = useCardSightings(id);
@@ -127,7 +129,7 @@ export default function CardDetailScreen() {
           )}
           {editing ? (
             <TextInput
-              style={[styles.lemmaInput, { borderColor: tint }]}
+              style={[styles.lemmaInput, { borderColor: tint, color: textColor }]}
               value={draft?.lemma ?? ''}
               onChangeText={(v) => setDraft((d) => (d ? { ...d, lemma: v } : d))}
               placeholder="Lemma"
@@ -164,7 +166,7 @@ export default function CardDetailScreen() {
                       { borderColor: tint },
                       active && { backgroundColor: tint },
                     ]}>
-                    <ThemedText style={[styles.genderChipText, active && { color: 'white' }]}>
+                    <ThemedText style={[styles.genderChipText, active && { color: onTint }]}>
                       {g ?? 'none'}
                     </ThemedText>
                   </Pressable>
@@ -175,7 +177,7 @@ export default function CardDetailScreen() {
 
           <Section title="Part of speech">
             <TextInput
-              style={[styles.input, { borderColor: tint }]}
+              style={[styles.input, { borderColor: tint, color: textColor }]}
               value={draft?.pos ?? ''}
               onChangeText={(v) => setDraft((d) => (d ? { ...d, pos: v } : d))}
               autoCapitalize="none"
@@ -186,7 +188,7 @@ export default function CardDetailScreen() {
 
           <Section title="Plural">
             <TextInput
-              style={[styles.input, { borderColor: tint }]}
+              style={[styles.input, { borderColor: tint, color: textColor }]}
               value={draft?.plural ?? ''}
               onChangeText={(v) => setDraft((d) => (d ? { ...d, plural: v || null } : d))}
               autoCapitalize="none"
@@ -197,7 +199,7 @@ export default function CardDetailScreen() {
 
           <Section title="Translation">
             <TextInput
-              style={[styles.input, { borderColor: tint }]}
+              style={[styles.input, { borderColor: tint, color: textColor }]}
               value={draft?.translationEn ?? ''}
               onChangeText={(v) => setDraft((d) => (d ? { ...d, translationEn: v } : d))}
               placeholder="English translation"
@@ -206,7 +208,7 @@ export default function CardDetailScreen() {
 
           <Section title="Example (German)">
             <TextInput
-              style={[styles.input, styles.multiline, { borderColor: tint }]}
+              style={[styles.input, styles.multiline, { borderColor: tint, color: textColor }]}
               value={draft?.exampleDe ?? ''}
               onChangeText={(v) => setDraft((d) => (d ? { ...d, exampleDe: v } : d))}
               multiline
@@ -216,7 +218,7 @@ export default function CardDetailScreen() {
 
           <Section title="Example (English)">
             <TextInput
-              style={[styles.input, styles.multiline, { borderColor: tint }]}
+              style={[styles.input, styles.multiline, { borderColor: tint, color: textColor }]}
               value={draft?.exampleEn ?? ''}
               onChangeText={(v) => setDraft((d) => (d ? { ...d, exampleEn: v } : d))}
               multiline
@@ -235,7 +237,7 @@ export default function CardDetailScreen() {
               onPress={saveEdit}
               disabled={submitting}
               style={[styles.primaryBtn, { backgroundColor: tint }, submitting && styles.btnDisabled]}>
-              <ThemedText style={styles.primaryBtnText}>
+              <ThemedText style={[styles.primaryBtnText, { color: onTint }]}>
                 {submitting ? 'Saving…' : 'Save'}
               </ThemedText>
             </Pressable>
@@ -366,7 +368,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
   },
-  primaryBtnText: { color: 'white', fontWeight: '600' },
+  primaryBtnText: { fontWeight: '600' },
   btnDisabled: { opacity: 0.5 },
   deleteBtn: {
     marginTop: 8,

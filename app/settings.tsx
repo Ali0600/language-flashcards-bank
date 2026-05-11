@@ -13,6 +13,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const tint = Colors[colorScheme].tint;
+  const onTint = Colors[colorScheme].background;
   const { limit, setLimit, loading } = useDailyNewCardLimit();
 
   return (
@@ -56,7 +57,7 @@ export default function SettingsScreen() {
                     { borderColor: tint },
                     active && { backgroundColor: tint },
                   ]}>
-                  <ThemedText style={[styles.presetText, active && { color: 'white' }]}>
+                  <ThemedText style={[styles.presetText, active && { color: onTint }]}>
                     {s}
                   </ThemedText>
                 </Pressable>
@@ -71,7 +72,7 @@ export default function SettingsScreen() {
       </ScrollView>
 
       <Pressable style={[styles.doneBtn, { backgroundColor: tint }]} onPress={() => router.back()}>
-        <ThemedText style={styles.doneBtnText}>Done</ThemedText>
+        <ThemedText style={[styles.doneBtnText, { color: onTint }]}>Done</ThemedText>
       </Pressable>
     </ThemedView>
   );
@@ -117,5 +118,5 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
   },
-  doneBtnText: { color: 'white', fontWeight: '600', fontSize: 16 },
+  doneBtnText: { fontWeight: '600', fontSize: 16 },
 });
