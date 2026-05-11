@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 4,
   },
-  tileValue: { fontSize: 28, fontWeight: '600' },
+  tileValue: { fontSize: 28, fontWeight: '600', lineHeight: 36 },
   tileLabel: { opacity: 0.6, fontSize: 13 },
   section: { gap: 8 },
   sectionTitle: { fontSize: 16, marginBottom: 4 },

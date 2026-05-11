@@ -234,6 +234,7 @@ const styles = StyleSheet.create({
   },
   lemma: {
     fontSize: 40,
+    lineHeight: 52,
     textAlign: 'center',
   },
   tapHint: {
