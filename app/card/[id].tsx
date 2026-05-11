@@ -16,6 +16,8 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useCard, useCardSightings } from '@/hooks/use-cards';
 import { deleteCard, updateCard, type EditableCardFields } from '@/services/card';
+import { speakGerman } from '@/services/speech';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 
 const GENDERS: (EditableCardFields['gender'])[] = ['der', 'die', 'das', null];
 
@@ -137,7 +139,15 @@ export default function CardDetailScreen() {
               autoCorrect={false}
             />
           ) : (
-            <ThemedText type="title">{card.lemma}</ThemedText>
+            <View style={styles.lemmaRow}>
+              <ThemedText type="title">{card.lemma}</ThemedText>
+              <Pressable
+                onPress={() => speakGerman(card.lemma)}
+                hitSlop={8}
+                style={styles.speakBtn}>
+                <IconSymbol name="speaker.wave.2.fill" size={22} color={tint} />
+              </Pressable>
+            </View>
           )}
           {!editing && card.plural && (
             <ThemedText style={styles.plural}>plural: {card.plural}</ThemedText>
@@ -253,7 +263,17 @@ export default function CardDetailScreen() {
 
           {card.exampleDe && (
             <Section title="Example">
-              <ThemedText style={styles.exampleDe}>{card.exampleDe}</ThemedText>
+              <View style={styles.exampleRow}>
+                <ThemedText style={[styles.exampleDe, styles.exampleText]}>
+                  {card.exampleDe}
+                </ThemedText>
+                <Pressable
+                  onPress={() => speakGerman(card.exampleDe)}
+                  hitSlop={8}
+                  style={styles.speakBtn}>
+                  <IconSymbol name="speaker.wave.2.fill" size={18} color={tint} />
+                </Pressable>
+              </View>
               {card.exampleEn && (
                 <ThemedText style={styles.exampleEn}>{card.exampleEn}</ThemedText>
               )}
@@ -352,6 +372,10 @@ const styles = StyleSheet.create({
   exampleDe: { fontStyle: 'italic' },
   exampleEn: { opacity: 0.65 },
   sighting: { opacity: 0.7, fontSize: 14 },
+  lemmaRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  exampleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  exampleText: { flex: 1 },
+  speakBtn: { padding: 4 },
   sightingLink: { paddingVertical: 4 },
   mono: { fontFamily: 'Courier', fontSize: 13, opacity: 0.7 },
   editActions: { flexDirection: 'row', gap: 12, marginTop: 8 },

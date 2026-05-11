@@ -26,6 +26,7 @@ const MAPPING = {
   'chart.bar.fill': 'bar-chart',
   'gearshape.fill': 'settings',
   'xmark.circle.fill': 'cancel',
+  'speaker.wave.2.fill': 'volume-up',
 } as IconMapping;
 
 /**

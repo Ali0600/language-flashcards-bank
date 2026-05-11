@@ -10,6 +10,8 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useDueCards, useFrequencyRanking, type FrequentNewCard } from '@/hooks/use-cards';
 import { rateCard, type ReviewRating } from '@/services/review';
 import { Rating } from '@/services/scheduler';
+import { speakGerman } from '@/services/speech';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 
 const RATINGS: { label: string; rating: ReviewRating; color: string }[] = [
   { label: 'Again', rating: Rating.Again, color: '#E74C3C' },
@@ -142,6 +144,17 @@ export default function StudyScreen() {
             {card.plural && (
               <ThemedText style={styles.plural}>plural: {card.plural}</ThemedText>
             )}
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                const text = card.exampleDe ? `${card.lemma}. ${card.exampleDe}` : card.lemma;
+                speakGerman(text);
+              }}
+              hitSlop={12}
+              style={[styles.speakBtn, { borderColor: tint }]}>
+              <IconSymbol name="speaker.wave.2.fill" size={20} color={tint} />
+              <ThemedText style={[styles.speakBtnText, { color: tint }]}>Listen</ThemedText>
+            </Pressable>
           </View>
         ) : (
           <ThemedText style={styles.tapHint}>tap to reveal</ThemedText>
@@ -294,6 +307,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   btnDisabled: { opacity: 0.5 },
+  speakBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  speakBtnText: { fontSize: 14, fontWeight: '600' },
   detailBtn: {
     flex: 1,
     paddingVertical: 14,
