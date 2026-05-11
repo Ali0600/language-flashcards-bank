@@ -6,6 +6,10 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
+export const unstable_settings = {
+  initialRouteName: 'library',
+};
+
 export default function TabLayout() {
   const colorScheme = useColorScheme();
 
@@ -17,10 +21,12 @@ export default function TabLayout() {
         tabBarButton: HapticTab,
       }}>
       <Tabs.Screen
-        name="index"
+        name="library"
         options={{
-          title: 'Capture',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="camera.fill" color={color} />,
+          title: 'Library',
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={28} name="rectangle.stack.fill" color={color} />
+          ),
         }}
       />
       <Tabs.Screen
@@ -31,12 +37,10 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="library"
+        name="index"
         options={{
-          title: 'Library',
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="rectangle.stack.fill" color={color} />
-          ),
+          title: 'Capture',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="camera.fill" color={color} />,
         }}
       />
     </Tabs>
