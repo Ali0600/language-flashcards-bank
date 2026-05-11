@@ -32,15 +32,13 @@ export function useFolders(): LoadState<FolderSummary[]> {
       let cancelled = false;
       (async () => {
         try {
-          const slugExpr = sql<string>`COALESCE(${photos.category}, ${UNCATEGORIZED_SLUG})`.as(
-            'slug',
-          );
-          const countExpr = sql<number>`COUNT(DISTINCT ${cardSightings.cardId})`.as('card_count');
+          const slugSql = sql<string>`COALESCE(${photos.category}, ${UNCATEGORIZED_SLUG})`;
+          const countSql = sql<number>`COUNT(DISTINCT ${cardSightings.cardId})`;
           const rows = await db
-            .select({ slug: slugExpr, cardCount: countExpr })
+            .select({ slug: slugSql.as('slug'), cardCount: countSql.as('card_count') })
             .from(photos)
             .innerJoin(cardSightings, eq(cardSightings.photoId, photos.id))
-            .groupBy(slugExpr)
+            .groupBy(slugSql)
             .all();
 
           const summaries: FolderSummary[] = rows
