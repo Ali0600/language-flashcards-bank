@@ -1,6 +1,6 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { asc, desc, eq, lte } from 'drizzle-orm';
+import { asc, desc, eq, lte, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { cards, cardSightings, type Card } from '@/db/schema';
@@ -120,6 +120,49 @@ export function useCard(id: string | undefined): LoadState<Card | null> {
         cancelled = true;
       };
     }, [id]),
+  );
+
+  return state;
+}
+
+export type FrequentNewCard = Card & { sightingCount: number };
+
+export function useFrequencyRanking(limit: number = 5): LoadState<FrequentNewCard[]> {
+  const [state, setState] = useState<LoadState<FrequentNewCard[]>>({
+    loading: true,
+    data: [],
+    error: null,
+  });
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      const freq = sql<number>`COUNT(${cardSightings.id})`.as('freq');
+      db.select({
+        card: cards,
+        freq,
+      })
+        .from(cards)
+        .leftJoin(cardSightings, eq(cardSightings.cardId, cards.id))
+        .where(eq(cards.state, 0))
+        .groupBy(cards.id)
+        .orderBy(desc(freq), asc(cards.lemma))
+        .limit(limit)
+        .all()
+        .then((rows) => {
+          if (cancelled) return;
+          const data = rows
+            .filter((r) => r.freq > 0)
+            .map((r) => ({ ...r.card, sightingCount: r.freq }));
+          setState({ loading: false, data, error: null });
+        })
+        .catch((e) => {
+          if (!cancelled) setState({ loading: false, data: [], error: e as Error });
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [limit]),
   );
 
   return state;

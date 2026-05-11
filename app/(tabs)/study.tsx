@@ -1,12 +1,12 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useDueCards } from '@/hooks/use-cards';
+import { useDueCards, useFrequencyRanking, type FrequentNewCard } from '@/hooks/use-cards';
 
 const RATINGS = [
   { label: 'Again', rating: 1, color: '#E74C3C' },
@@ -20,6 +20,7 @@ export default function StudyScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const tint = Colors[colorScheme].tint;
   const { loading, data: dueCards, error } = useDueCards();
+  const { data: suggested } = useFrequencyRanking(5);
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
 
@@ -46,6 +47,14 @@ export default function StudyScreen() {
         <ThemedText style={styles.empty}>
           No cards are due right now. Snap a photo of some German text to add new vocabulary.
         </ThemedText>
+        {suggested.length > 0 && (
+          <View style={styles.suggestedBlock}>
+            <ThemedText type="subtitle" style={styles.suggestedHeader}>
+              Suggested next
+            </ThemedText>
+            <SuggestedRail items={suggested} tint={tint} onTap={(c) => router.push(`/card/${c.id}`)} />
+          </View>
+        )}
       </ThemedView>
     );
   }
@@ -64,6 +73,9 @@ export default function StudyScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      {suggested.length > 0 && (
+        <SuggestedRail items={suggested} tint={tint} onTap={(c) => router.push(`/card/${c.id}`)} />
+      )}
       <ThemedText style={styles.progress}>
         {index + 1} / {dueCards.length}
       </ThemedText>
@@ -116,6 +128,41 @@ export default function StudyScreen() {
         )}
       </View>
     </ThemedView>
+  );
+}
+
+function SuggestedRail({
+  items,
+  tint,
+  onTap,
+}: {
+  items: FrequentNewCard[];
+  tint: string;
+  onTap: (card: FrequentNewCard) => void;
+}) {
+  return (
+    <View style={styles.rail}>
+      <ThemedText style={styles.railLabel}>Seen often, not yet learned</ThemedText>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.railRow}>
+        {items.map((c) => (
+          <Pressable
+            key={c.id}
+            onPress={() => onTap(c)}
+            style={[styles.railChip, { borderColor: tint }]}>
+            {c.gender && <ThemedText style={styles.railGender}>{c.gender}</ThemedText>}
+            <ThemedText type="defaultSemiBold" style={styles.railLemma}>
+              {c.lemma}
+            </ThemedText>
+            <View style={[styles.railBadge, { backgroundColor: tint }]}>
+              <ThemedText style={styles.railBadgeText}>×{c.sightingCount}</ThemedText>
+            </View>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -208,4 +255,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
   },
+  rail: { marginBottom: 12, gap: 6 },
+  railLabel: { fontSize: 12, opacity: 0.6, textTransform: 'uppercase', letterSpacing: 0.5 },
+  railRow: { gap: 8, paddingRight: 8 },
+  railChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderRadius: 999,
+  },
+  railGender: { fontSize: 13, opacity: 0.6 },
+  railLemma: { fontSize: 15 },
+  railBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999 },
+  railBadgeText: { color: 'white', fontSize: 11, fontWeight: '700' },
+  suggestedBlock: { width: '100%', marginTop: 24, gap: 8 },
+  suggestedHeader: { textAlign: 'center', fontSize: 16, opacity: 0.85 },
 });
