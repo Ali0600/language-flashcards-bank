@@ -2,10 +2,11 @@ import { setAudioModeAsync } from 'expo-audio';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useMigrations } from 'drizzle-orm/op-sqlite/migrator';
 import { Stack } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as Updates from 'expo-updates';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { db } from '@/db/client';
@@ -13,6 +14,8 @@ import migrations from '@/db/migrations/migrations';
 import { seedIfEmpty } from '@/db/seed';
 import { ThemedText } from '@/components/themed-text';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -30,6 +33,18 @@ export default function RootLayout() {
         .finally(() => setSeeded(true));
     }
   }, [success, seeded]);
+
+  useEffect(() => {
+    if (success && seeded) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [success, seeded]);
+
+  useEffect(() => {
+    if (error) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [error]);
 
   useEffect(() => {
     setAudioModeAsync({ playsInSilentMode: true }).catch((e) =>
@@ -76,11 +91,8 @@ export default function RootLayout() {
   }
 
   if (!success || !seeded) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator />
-      </View>
-    );
+    // Splash screen is still up; render nothing.
+    return null;
   }
 
   return (
