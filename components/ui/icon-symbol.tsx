@@ -39,6 +39,7 @@ const MAPPING = {
   'square.stack.fill': 'apps',
   'questionmark.folder.fill': 'folder-open',
   'folder.fill': 'folder',
+  'chevron.down': 'expand-more',
 } as IconMapping;
 
 /**

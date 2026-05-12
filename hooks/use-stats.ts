@@ -3,6 +3,7 @@ import { and, count, desc, eq, gte, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { cardSightings, cards, photos, reviewLogs } from '@/db/schema';
 import { useAsyncQuery, type AsyncQueryResult } from '@/hooks/use-async-query';
+import { bucketByDay, computeStreaks, type DayBucket } from '@/services/streaks';
 
 export type StateBreakdown = { new: number; learning: number; review: number; relearning: number };
 
@@ -13,6 +14,8 @@ export type TopFrequencyEntry = {
   sightingCount: number;
 };
 
+export const HEATMAP_DAYS = 84; // 12 weeks × 7
+
 export type Stats = {
   totalCards: number;
   breakdown: StateBreakdown;
@@ -21,6 +24,9 @@ export type Stats = {
   totalPhotos: number;
   totalSightings: number;
   topFrequency: TopFrequencyEntry[];
+  heatmap: DayBucket[];
+  currentStreak: number;
+  longestStreak: number;
 };
 
 const EMPTY: Stats = {
@@ -31,6 +37,9 @@ const EMPTY: Stats = {
   totalPhotos: 0,
   totalSightings: 0,
   topFrequency: [],
+  heatmap: [],
+  currentStreak: 0,
+  longestStreak: 0,
 };
 
 export function useStats(): AsyncQueryResult<Stats> {
@@ -89,6 +98,19 @@ export function useStats(): AsyncQueryResult<Stats> {
       .limit(5)
       .all();
 
+    // Heatmap: pull review timestamps within the rolling window.
+    const windowStart = Date.now() - HEATMAP_DAYS * 24 * 60 * 60 * 1000;
+    const heatmapRows = await db
+      .select({ reviewedAt: reviewLogs.reviewedAt })
+      .from(reviewLogs)
+      .where(gte(reviewLogs.reviewedAt, windowStart))
+      .all();
+    const heatmap = bucketByDay(
+      heatmapRows.map((r) => r.reviewedAt),
+      HEATMAP_DAYS,
+    );
+    const { current: currentStreak, longest: longestStreak } = computeStreaks(heatmap);
+
     return {
       totalCards,
       breakdown,
@@ -104,6 +126,9 @@ export function useStats(): AsyncQueryResult<Stats> {
           gender: r.gender,
           sightingCount: r.freq,
         })),
+      heatmap,
+      currentStreak,
+      longestStreak,
     };
   });
 }

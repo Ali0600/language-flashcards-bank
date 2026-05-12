@@ -20,6 +20,7 @@ export const cards = sqliteTable(
     exampleDe: text('example_de'),
     exampleEn: text('example_en'),
     plural: text('plural'),
+    notes: text('notes'),
 
     due: integer('due').notNull(),
     stability: real('stability').notNull().default(0),

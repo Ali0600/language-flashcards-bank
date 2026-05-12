@@ -1,7 +1,8 @@
-import { and, asc, desc, eq, gte, lte, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { cards, cardSightings, reviewLogs, type Card } from '@/db/schema';
+import { cards, cardSightings, photos, reviewLogs, type Card } from '@/db/schema';
+import { UNCATEGORIZED_SLUG, type AnyFolderSlug } from '@/constants/folders';
 import { DEFAULT_SETTINGS, getSetting, SettingKeys } from '@/services/settings';
 import { useAsyncQuery, type AsyncQueryResult } from '@/hooks/use-async-query';
 
@@ -56,13 +57,37 @@ export type LibrarySort = 'alphabetical' | 'due' | 'frequency';
 
 export type CardWithFreq = Card & { sightingCount: number };
 
-export function useLibrary(sort: LibrarySort): AsyncQueryResult<CardWithFreq[]> {
+export function useLibrary(
+  sort: LibrarySort,
+  folderFilter: AnyFolderSlug | null = null,
+): AsyncQueryResult<CardWithFreq[]> {
   return useAsyncQuery<CardWithFreq[]>(
     [],
     async () => {
+      // When a folder filter is active, restrict the card set to those seen in
+      // photos of that category (or the uncategorized photos for that slug).
+      let restrictedCardIds: string[] | null = null;
+      if (folderFilter) {
+        const photoMatch =
+          folderFilter === UNCATEGORIZED_SLUG
+            ? isNull(photos.category)
+            : eq(photos.category, folderFilter);
+        const idRows = await db
+          .selectDistinct({ cardId: cardSightings.cardId })
+          .from(cardSightings)
+          .innerJoin(photos, eq(photos.id, cardSightings.photoId))
+          .where(photoMatch)
+          .all();
+        restrictedCardIds = idRows.map((r) => r.cardId);
+        if (restrictedCardIds.length === 0) return [];
+      }
+
       const orderBy =
         sort === 'alphabetical' ? asc(cards.lemma) : sort === 'due' ? asc(cards.due) : asc(cards.lemma);
-      const rows = await db.select().from(cards).orderBy(orderBy).all();
+      const baseQuery = db.select().from(cards);
+      const rows = restrictedCardIds
+        ? await baseQuery.where(inArray(cards.id, restrictedCardIds)).orderBy(orderBy).all()
+        : await baseQuery.orderBy(orderBy).all();
 
       const freq = sql<number>`COUNT(${cardSightings.id})`.as('freq');
       const counts = await db
@@ -82,7 +107,7 @@ export function useLibrary(sort: LibrarySort): AsyncQueryResult<CardWithFreq[]> 
       }
       return withFreq;
     },
-    [sort],
+    [sort, folderFilter],
   );
 }
 

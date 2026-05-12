@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
+  ActionSheetIOS,
   ActivityIndicator,
   FlatList,
   Pressable,
@@ -14,7 +15,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
-import { FOLDER_ICONS } from '@/constants/folders';
+import { FOLDER_ICONS, FOLDER_LABELS, type AnyFolderSlug } from '@/constants/folders';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useLibrary, type LibrarySort, type CardWithFreq } from '@/hooks/use-cards';
 import { useFolders, type FolderSummary } from '@/hooks/use-folders';
@@ -41,8 +42,9 @@ export default function LibraryScreen() {
   const [mode, setMode] = useState<ViewMode>('cards');
   const [sort, setSort] = useState<LibrarySort>('frequency');
   const [query, setQuery] = useState('');
+  const [folderFilter, setFolderFilter] = useState<AnyFolderSlug | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const library = useLibrary(sort);
+  const library = useLibrary(sort, folderFilter);
   const folders = useFolders();
 
   const filtered = useMemo(() => {
@@ -103,6 +105,9 @@ export default function LibraryScreen() {
           setQuery={setQuery}
           sort={sort}
           setSort={setSort}
+          folderFilter={folderFilter}
+          setFolderFilter={setFolderFilter}
+          availableFolders={folders.data}
           loading={library.loading}
           error={library.error}
           data={library.data}
@@ -134,6 +139,9 @@ function CardsView({
   setQuery,
   sort,
   setSort,
+  folderFilter,
+  setFolderFilter,
+  availableFolders,
   loading,
   error,
   data,
@@ -149,6 +157,9 @@ function CardsView({
   setQuery: (q: string) => void;
   sort: LibrarySort;
   setSort: (s: LibrarySort) => void;
+  folderFilter: AnyFolderSlug | null;
+  setFolderFilter: (f: AnyFolderSlug | null) => void;
+  availableFolders: FolderSummary[];
   loading: boolean;
   error: Error | null;
   data: CardWithFreq[];
@@ -157,6 +168,29 @@ function CardsView({
   onRefresh: () => void;
   onCardPress: (id: string) => void;
 }) {
+  const openFolderPicker = () => {
+    if (availableFolders.length === 0) return;
+    const slugs: (AnyFolderSlug | null)[] = [null, ...availableFolders.map((f) => f.slug)];
+    const options = ['All folders', ...availableFolders.map((f) => f.label), 'Cancel'];
+    const cancelButtonIndex = options.length - 1;
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        title: 'Filter by folder',
+        options,
+        cancelButtonIndex,
+      },
+      (selectedIndex) => {
+        if (selectedIndex === cancelButtonIndex) return;
+        if (selectedIndex < 0 || selectedIndex >= slugs.length) return;
+        setFolderFilter(slugs[selectedIndex] ?? null);
+      },
+    );
+  };
+
+  const folderChipLabel =
+    folderFilter ? FOLDER_LABELS[folderFilter] ?? 'Folder' : 'All folders';
+  const folderChipActive = folderFilter !== null;
+
   return (
     <>
       <View style={[styles.search, { borderColor: tint }]}>
@@ -192,6 +226,46 @@ function CardsView({
             </ThemedText>
           </Pressable>
         ))}
+        <Pressable
+          onPress={openFolderPicker}
+          disabled={availableFolders.length === 0}
+          accessibilityRole="button"
+          accessibilityLabel={`Filter by folder, currently ${folderChipLabel}`}
+          style={[
+            styles.sortChip,
+            styles.folderFilterChip,
+            { borderColor: tint },
+            folderChipActive && { backgroundColor: tint },
+            availableFolders.length === 0 && styles.folderFilterChipDisabled,
+          ]}>
+          <IconSymbol
+            name="folder.fill"
+            size={12}
+            color={folderChipActive ? bgColor : tint}
+          />
+          <ThemedText
+            style={[
+              styles.sortChipText,
+              folderChipActive && { color: bgColor },
+            ]}
+            numberOfLines={1}>
+            {folderChipLabel}
+          </ThemedText>
+          {folderChipActive && (
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                setFolderFilter(null);
+              }}
+              hitSlop={8}>
+              <IconSymbol
+                name="xmark.circle.fill"
+                size={14}
+                color={bgColor}
+              />
+            </Pressable>
+          )}
+        </Pressable>
       </View>
 
       {loading ? (
@@ -344,7 +418,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sortRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  sortRow: { flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' },
   sortChip: {
     paddingHorizontal: 14,
     paddingVertical: 6,
@@ -352,6 +426,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   sortChipText: { fontSize: 14 },
+  folderFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: 220,
+  },
+  folderFilterChipDisabled: { opacity: 0.4 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -5,7 +5,7 @@ import { cards, type Card } from '@/db/schema';
 
 export type EditableCardFields = Pick<
   Card,
-  'lemma' | 'gender' | 'pos' | 'translationEn' | 'exampleDe' | 'exampleEn' | 'plural'
+  'lemma' | 'gender' | 'pos' | 'translationEn' | 'exampleDe' | 'exampleEn' | 'plural' | 'notes'
 >;
 
 export async function updateCard(id: string, updates: Partial<EditableCardFields>): Promise<void> {

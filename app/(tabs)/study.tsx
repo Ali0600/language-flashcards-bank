@@ -8,6 +8,8 @@ import { ThemedView } from '@/components/themed-view';
 import { Colors, Ratings } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useDueCards, useFrequencyRanking, type FrequentNewCard } from '@/hooks/use-cards';
+import { useStudyClozeMode } from '@/hooks/use-settings';
+import { maskLemma } from '@/services/cloze';
 import { rateCard, type ReviewRating } from '@/services/review';
 import { Rating } from '@/services/scheduler';
 import { speakGerman } from '@/services/speech';
@@ -28,6 +30,7 @@ export default function StudyScreen() {
   const onTint = Colors[colorScheme].background;
   const { loading, data: dueCards, error, refetch } = useDueCards();
   const { data: suggested } = useFrequencyRanking(5);
+  const { enabled: clozeMode } = useStudyClozeMode();
   const [queue, setQueue] = useState<Card[] | null>(null);
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
@@ -101,6 +104,9 @@ export default function StudyScreen() {
   const card = queue[index];
   if (!card) return null;
 
+  const cloze = clozeMode ? maskLemma(card.exampleDe, card.lemma) : { masked: '', matched: false };
+  const showCloze = cloze.matched;
+
   const onRate = async (rating: ReviewRating) => {
     if (submitting) return;
     if (rating === Rating.Again) {
@@ -137,38 +143,51 @@ export default function StudyScreen() {
       <Pressable
         style={[styles.card, { borderColor: tint }]}
         onPress={() => setRevealed((r) => !r)}>
-        {card.gender && <ThemedText style={styles.gender}>{card.gender}</ThemedText>}
-        <ThemedText type="title" style={styles.lemma}>
-          {card.lemma}
-        </ThemedText>
-        {revealed ? (
-          <View style={styles.back}>
-            <ThemedText type="subtitle" style={styles.translation}>
-              {card.translationEn}
-            </ThemedText>
-            {card.exampleDe && (
-              <ThemedText style={styles.example}>{card.exampleDe}</ThemedText>
-            )}
-            {card.exampleEn && (
-              <ThemedText style={styles.exampleEn}>{card.exampleEn}</ThemedText>
-            )}
-            {card.plural && (
-              <ThemedText style={styles.plural}>plural: {card.plural}</ThemedText>
-            )}
-            <Pressable
-              onPress={(e) => {
-                e.stopPropagation();
-                const text = card.exampleDe ? `${card.lemma}. ${card.exampleDe}` : card.lemma;
-                speakGerman(text);
-              }}
-              hitSlop={12}
-              style={[styles.speakBtn, { borderColor: tint }]}>
-              <IconSymbol name="speaker.wave.2.fill" size={20} color={tint} />
-              <ThemedText style={[styles.speakBtnText, { color: tint }]}>Listen</ThemedText>
-            </Pressable>
-          </View>
+        {showCloze && !revealed ? (
+          <>
+            <ThemedText style={styles.clozeHint}>Fill in the blank</ThemedText>
+            <ThemedText style={styles.clozeSentence}>{cloze.masked}</ThemedText>
+            <ThemedText style={styles.tapHint}>tap to reveal</ThemedText>
+          </>
         ) : (
-          <ThemedText style={styles.tapHint}>tap to reveal</ThemedText>
+          <>
+            {card.gender && <ThemedText style={styles.gender}>{card.gender}</ThemedText>}
+            <ThemedText type="title" style={styles.lemma}>
+              {card.lemma}
+            </ThemedText>
+            {revealed ? (
+              <View style={styles.back}>
+                <ThemedText type="subtitle" style={styles.translation}>
+                  {card.translationEn}
+                </ThemedText>
+                {card.exampleDe && (
+                  <ThemedText style={styles.example}>{card.exampleDe}</ThemedText>
+                )}
+                {card.exampleEn && (
+                  <ThemedText style={styles.exampleEn}>{card.exampleEn}</ThemedText>
+                )}
+                {card.plural && (
+                  <ThemedText style={styles.plural}>plural: {card.plural}</ThemedText>
+                )}
+                {card.notes && (
+                  <ThemedText style={styles.notes}>{card.notes}</ThemedText>
+                )}
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    const text = card.exampleDe ? `${card.lemma}. ${card.exampleDe}` : card.lemma;
+                    speakGerman(text);
+                  }}
+                  hitSlop={12}
+                  style={[styles.speakBtn, { borderColor: tint }]}>
+                  <IconSymbol name="speaker.wave.2.fill" size={20} color={tint} />
+                  <ThemedText style={[styles.speakBtnText, { color: tint }]}>Listen</ThemedText>
+                </Pressable>
+              </View>
+            ) : (
+              <ThemedText style={styles.tapHint}>tap to reveal</ThemedText>
+            )}
+          </>
         )}
       </Pressable>
 
@@ -278,6 +297,18 @@ const styles = StyleSheet.create({
     lineHeight: 52,
     textAlign: 'center',
   },
+  clozeHint: {
+    fontSize: 12,
+    opacity: 0.6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  clozeSentence: {
+    fontSize: 26,
+    lineHeight: 36,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
   tapHint: {
     opacity: 0.5,
     marginTop: 24,
@@ -302,6 +333,14 @@ const styles = StyleSheet.create({
   plural: {
     opacity: 0.6,
     marginTop: 4,
+  },
+  notes: {
+    opacity: 0.75,
+    fontSize: 14,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 8,
+    paddingHorizontal: 8,
   },
   actions: {
     flexDirection: 'row',

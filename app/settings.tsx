@@ -6,7 +6,11 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useDailyNewCardLimit, usePlayInSilentMode } from '@/hooks/use-settings';
+import {
+  useDailyNewCardLimit,
+  usePlayInSilentMode,
+  useStudyClozeMode,
+} from '@/hooks/use-settings';
 
 const STEPS = [0, 5, 10, 15, 20, 30, 50];
 
@@ -17,6 +21,7 @@ export default function SettingsScreen() {
   const onTint = Colors[colorScheme].background;
   const { limit, setLimit, loading } = useDailyNewCardLimit();
   const { enabled: playInSilentMode, setEnabled: setPlayInSilentMode } = usePlayInSilentMode();
+  const { enabled: clozeMode, setEnabled: setClozeMode } = useStudyClozeMode();
 
   const onTogglePlayInSilentMode = async (next: boolean) => {
     await setPlayInSilentMode(next);
@@ -91,6 +96,23 @@ export default function SettingsScreen() {
             <Switch
               value={playInSilentMode}
               onValueChange={onTogglePlayInSilentMode}
+              trackColor={{ true: tint }}
+            />
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleLabels}>
+              <ThemedText type="subtitle">Cloze deletion mode</ThemedText>
+              <ThemedText style={styles.help}>
+                Hide the word inside its example sentence and recall it from context. Cards
+                without a usable example fall back to the normal front.
+              </ThemedText>
+            </View>
+            <Switch
+              value={clozeMode}
+              onValueChange={setClozeMode}
               trackColor={{ true: tint }}
             />
           </View>

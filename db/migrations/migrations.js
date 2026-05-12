@@ -5,6 +5,7 @@ import m0000 from './0000_panoramic_wendigo.sql';
 import m0001 from './0001_silky_nightmare.sql';
 import m0002 from './0002_clumsy_misty_knight.sql';
 import m0003 from './0003_lying_sinister_six.sql';
+import m0004 from './0004_perfect_juggernaut.sql';
 
   export default {
     journal,
@@ -12,7 +13,8 @@ import m0003 from './0003_lying_sinister_six.sql';
       m0000,
 m0001,
 m0002,
-m0003
+m0003,
+m0004
     }
   }
   

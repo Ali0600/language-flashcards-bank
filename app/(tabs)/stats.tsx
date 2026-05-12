@@ -14,8 +14,9 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useStats } from '@/hooks/use-stats';
+import { HEATMAP_DAYS, useStats } from '@/hooks/use-stats';
 import { exportCardsToCsv } from '@/services/export';
+import type { DayBucket } from '@/services/streaks';
 
 export default function StatsScreen() {
   const router = useRouter();
@@ -66,6 +67,25 @@ export default function StatsScreen() {
         <Tile label="Total reviews" value={stats.totalReviews} tint={tint} />
         <Tile label="Reviews today" value={stats.reviewsToday} tint={tint} />
       </View>
+
+      <Section title="Activity">
+        <View style={styles.streakRow}>
+          <View style={styles.streakBlock}>
+            <ThemedText style={styles.streakValue}>{stats.currentStreak}</ThemedText>
+            <ThemedText style={styles.streakLabel}>
+              day{stats.currentStreak === 1 ? '' : 's'} current
+            </ThemedText>
+          </View>
+          <View style={styles.streakBlock}>
+            <ThemedText style={styles.streakValue}>{stats.longestStreak}</ThemedText>
+            <ThemedText style={styles.streakLabel}>
+              day{stats.longestStreak === 1 ? '' : 's'} longest
+            </ThemedText>
+          </View>
+        </View>
+        <Heatmap heatmap={stats.heatmap} tint={tint} />
+        <ThemedText style={styles.heatmapHint}>Last {HEATMAP_DAYS} days</ThemedText>
+      </Section>
 
       <Section title="Card states">
         <Bar label="New" value={stats.breakdown.new} total={stats.totalCards} tint="#888" />
@@ -153,6 +173,76 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+function Heatmap({ heatmap, tint }: { heatmap: DayBucket[]; tint: string }) {
+  // Layout: 12 columns × 7 rows. The right-most column contains today; the
+  // grid is left-padded so today lands on the correct weekday row.
+  // Heatmap is ordered oldest → newest. The last bucket is today.
+  // We want columns going left (oldest) → right (today). Each column has 7
+  // cells (Mon..Sun). The bottom-right of the rightmost column = today, with
+  // earlier weekdays this week stacked above; cells after today in that
+  // column are blank.
+  const last = heatmap[heatmap.length - 1];
+  if (!last) {
+    return <View style={styles.heatmapPlaceholder} />;
+  }
+  // 0=Sun..6=Sat in JS; convert to Mon..Sun (0=Mon..6=Sun) for European convention.
+  const todayDow = (new Date(`${last.date}T00:00:00`).getDay() + 6) % 7;
+  const blanksAtEnd = 6 - todayDow;
+  // Total cells we want: 12 weeks × 7 = 84. Left-pad if heatmap is shorter
+  // than that. The last week is partially blank to align today on its weekday.
+  const padded: (DayBucket | null)[] = [...heatmap];
+  for (let i = 0; i < blanksAtEnd; i++) padded.push(null);
+  // Pad leading nulls if needed to reach 7 × 12 = 84.
+  while (padded.length < 84) padded.unshift(null);
+  // Trim if somehow longer.
+  while (padded.length > 84) padded.shift();
+
+  const maxCount = heatmap.reduce((m, b) => Math.max(m, b.count), 0);
+
+  // Build 7 rows of 12 cells. row i picks indices [i, i+7, i+14, ...] —
+  // wait, no, that's column-major. Easier: iterate columns explicitly.
+  const rows: ((DayBucket | null)[])[] = Array.from({ length: 7 }, () => []);
+  for (let col = 0; col < 12; col++) {
+    for (let row = 0; row < 7; row++) {
+      const cell = padded[col * 7 + row] ?? null;
+      rows[row]!.push(cell);
+    }
+  }
+
+  const intensity = (n: number): number => {
+    if (n <= 0 || maxCount <= 0) return 0;
+    // Buckets: 1, 25%, 50%, 75%, 100%. Quantize to 4 levels.
+    const pct = n / maxCount;
+    if (pct >= 0.75) return 1;
+    if (pct >= 0.5) return 0.75;
+    if (pct >= 0.25) return 0.55;
+    return 0.35;
+  };
+
+  return (
+    <View style={styles.heatmap}>
+      {rows.map((row, ri) => (
+        <View key={ri} style={styles.heatmapRow}>
+          {row.map((cell, ci) => (
+            <View
+              key={ci}
+              style={[
+                styles.heatmapCell,
+                !cell && styles.heatmapCellBlank,
+                cell && cell.count === 0 && styles.heatmapCellEmpty,
+                cell && cell.count > 0 && {
+                  backgroundColor: tint,
+                  opacity: intensity(cell.count),
+                },
+              ]}
+            />
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function Bar({ label, value, total, tint }: { label: string; value: number; total: number; tint: string }) {
   const pct = total > 0 ? Math.max(2, (value / total) * 100) : 0;
   return (
@@ -197,6 +287,21 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   barFill: { height: '100%', borderRadius: 4 },
+  streakRow: { flexDirection: 'row', gap: 24, marginBottom: 4 },
+  streakBlock: { gap: 2 },
+  streakValue: { fontSize: 32, fontWeight: '700', lineHeight: 38 },
+  streakLabel: { fontSize: 12, opacity: 0.6 },
+  heatmap: { gap: 3 },
+  heatmapRow: { flexDirection: 'row', gap: 3 },
+  heatmapCell: {
+    flex: 1,
+    aspectRatio: 1,
+    borderRadius: 3,
+  },
+  heatmapCellEmpty: { backgroundColor: 'rgba(150, 150, 150, 0.15)' },
+  heatmapCellBlank: { backgroundColor: 'transparent' },
+  heatmapPlaceholder: { height: 80 },
+  heatmapHint: { fontSize: 11, opacity: 0.5, marginTop: 4 },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -46,6 +46,7 @@ export default function CardDetailScreen() {
         exampleDe: card.exampleDe,
         exampleEn: card.exampleEn,
         plural: card.plural,
+        notes: card.notes,
       });
     }
   }, [card, editing]);
@@ -83,6 +84,7 @@ export default function CardDetailScreen() {
       exampleDe: card.exampleDe,
       exampleEn: card.exampleEn,
       plural: card.plural,
+      notes: card.notes,
     });
     setEditing(true);
   };
@@ -244,6 +246,16 @@ export default function CardDetailScreen() {
             />
           </Section>
 
+          <Section title="Notes / mnemonic">
+            <TextInput
+              style={[styles.input, styles.multiline, { borderColor: tint, color: textColor }]}
+              value={draft?.notes ?? ''}
+              onChangeText={(v) => setDraft((d) => (d ? { ...d, notes: v || null } : d))}
+              multiline
+              placeholder="A memory hook, an etymology note, anything that helps it stick."
+            />
+          </Section>
+
           <View style={styles.editActions}>
             <Pressable
               onPress={cancelEdit}
@@ -285,6 +297,12 @@ export default function CardDetailScreen() {
               {card.exampleEn && (
                 <ThemedText style={styles.exampleEn}>{card.exampleEn}</ThemedText>
               )}
+            </Section>
+          )}
+
+          {card.notes && (
+            <Section title="Notes">
+              <ThemedText style={styles.notesText}>{card.notes}</ThemedText>
             </Section>
           )}
 
@@ -379,6 +397,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 16, marginBottom: 4 },
   exampleDe: { fontStyle: 'italic' },
   exampleEn: { opacity: 0.65 },
+  notesText: { fontSize: 15, lineHeight: 22 },
   sighting: { opacity: 0.7, fontSize: 14 },
   lemmaRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   exampleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },

@@ -1,7 +1,47 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 
-import { DEFAULT_SETTINGS, getSetting, setSetting, SettingKeys } from '@/services/settings';
+import {
+  DEFAULT_SETTINGS,
+  getSetting,
+  setSetting,
+  SettingKeys,
+  type SettingKey,
+} from '@/services/settings';
+
+function useBooleanSetting(key: SettingKey, defaultValue: boolean) {
+  const [enabled, setEnabledState] = useState<boolean>(defaultValue);
+  const [loading, setLoading] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      getSetting<boolean>(key, defaultValue)
+        .then((v) => {
+          if (!cancelled) {
+            setEnabledState(v);
+            setLoading(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [key, defaultValue]),
+  );
+
+  const update = useCallback(
+    async (next: boolean) => {
+      setEnabledState(next);
+      await setSetting(key, next);
+    },
+    [key],
+  );
+
+  return { enabled, loading, setEnabled: update };
+}
 
 export function useDailyNewCardLimit() {
   const [limit, setLimitState] = useState<number>(DEFAULT_SETTINGS.dailyNewCardLimit);
@@ -36,32 +76,9 @@ export function useDailyNewCardLimit() {
 }
 
 export function usePlayInSilentMode() {
-  const [enabled, setEnabledState] = useState<boolean>(DEFAULT_SETTINGS.playInSilentMode);
-  const [loading, setLoading] = useState(true);
+  return useBooleanSetting(SettingKeys.playInSilentMode, DEFAULT_SETTINGS.playInSilentMode);
+}
 
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      getSetting<boolean>(SettingKeys.playInSilentMode, DEFAULT_SETTINGS.playInSilentMode)
-        .then((v) => {
-          if (!cancelled) {
-            setEnabledState(v);
-            setLoading(false);
-          }
-        })
-        .catch(() => {
-          if (!cancelled) setLoading(false);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }, []),
-  );
-
-  const update = useCallback(async (next: boolean) => {
-    setEnabledState(next);
-    await setSetting(SettingKeys.playInSilentMode, next);
-  }, []);
-
-  return { enabled, loading, setEnabled: update };
+export function useStudyClozeMode() {
+  return useBooleanSetting(SettingKeys.studyClozeMode, DEFAULT_SETTINGS.studyClozeMode);
 }
