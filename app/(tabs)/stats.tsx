@@ -22,14 +22,17 @@ export default function StatsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const tint = Colors[colorScheme].tint;
   const onTint = Colors[colorScheme].background;
-  const { stats, loading, refetch } = useStats();
+  const { data: stats, loading, refetch } = useStats();
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    refetch();
-    setTimeout(() => setRefreshing(false), 400);
+    try {
+      await refetch();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const onExport = async () => {

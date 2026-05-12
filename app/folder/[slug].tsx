@@ -21,8 +21,11 @@ export default function FolderScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    refetch();
-    setTimeout(() => setRefreshing(false), 400);
+    try {
+      await refetch();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   return (

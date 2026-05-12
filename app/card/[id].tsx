@@ -30,7 +30,7 @@ export default function CardDetailScreen() {
   const onTint = Colors[colorScheme].background;
 
   const { loading, data: card, error } = useCard(id);
-  const sightings = useCardSightings(id);
+  const { data: sightings } = useCardSightings(id);
 
   const [editing, setEditing] = useState(false);
   const [submitting, setSubmitting] = useState(false);

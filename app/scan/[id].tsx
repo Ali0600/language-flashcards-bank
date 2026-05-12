@@ -13,7 +13,8 @@ export default function ScanResultsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const tint = Colors[colorScheme].tint;
   const onTint = Colors[colorScheme].background;
-  const { loading, photo, rows, error } = useScan(id);
+  const { loading, data, error } = useScan(id);
+  const { photo, rows } = data;
 
   if (loading) {
     return (

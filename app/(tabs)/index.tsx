@@ -57,9 +57,12 @@ export default function LibraryScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    if (mode === 'cards') library.refetch();
-    else folders.refetch();
-    setTimeout(() => setRefreshing(false), 400);
+    try {
+      if (mode === 'cards') await library.refetch();
+      else await folders.refetch();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   return (
