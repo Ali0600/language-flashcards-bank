@@ -5,6 +5,7 @@ import uuid from 'react-native-uuid';
 import { db } from '@/db/client';
 import { cards, cardSightings, photos, type NewCard, type NewCardSighting } from '@/db/schema';
 import type { WordAnalysis } from '@/lib/types';
+import { dedupeByLemma } from './pipeline-helpers';
 import { emptyState } from './scheduler';
 import { shouldKeepWord } from './stoplist';
 import { analyzeImage } from './vision';
@@ -152,16 +153,4 @@ export async function processPhoto(imageUri: string): Promise<ScanOutcome> {
     rawText,
     results,
   };
-}
-
-function dedupeByLemma(words: WordAnalysis[]): WordAnalysis[] {
-  const seen = new Set<string>();
-  const out: WordAnalysis[] = [];
-  for (const w of words) {
-    const key = w.lemma.toLowerCase().trim();
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(w);
-  }
-  return out;
 }
