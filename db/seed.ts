@@ -53,6 +53,7 @@ const SEED_CARDS = [
 ];
 
 export async function seedIfEmpty(): Promise<void> {
+  if (!__DEV__) return;
   const existing = await db.select({ id: cards.id }).from(cards).limit(1);
   if (existing.length > 0) return;
 

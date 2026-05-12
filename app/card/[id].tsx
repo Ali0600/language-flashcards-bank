@@ -58,7 +58,15 @@ export default function CardDetailScreen() {
     );
   }
 
-  if (error || !card) {
+  if (error) {
+    return (
+      <ThemedView style={styles.center}>
+        <ThemedText>Could not load card: {error.message}</ThemedText>
+      </ThemedView>
+    );
+  }
+
+  if (!card) {
     return (
       <ThemedView style={styles.center}>
         <ThemedText>Card not found.</ThemedText>
