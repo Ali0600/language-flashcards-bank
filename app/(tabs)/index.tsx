@@ -87,8 +87,10 @@ export default function LibraryScreen() {
         </View>
         <Pressable
           onPress={() => router.push('/settings' as never)}
+          accessibilityRole="button"
+          accessibilityLabel="Settings"
           style={[styles.gearBtn, { borderColor: tint }]}>
-          <IconSymbol name="gearshape.fill" size={18} color={tint} />
+          <IconSymbol name="gearshape.fill" size={20} color={tint} />
         </Pressable>
       </View>
 
@@ -335,9 +337,9 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, fontSize: 15 },
   clearBtn: { padding: 4 },
   gearBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',

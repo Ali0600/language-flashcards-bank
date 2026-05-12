@@ -24,22 +24,6 @@ const config: ExpoConfig = {
         'Language Flashcards reads photos from your library to extract German vocabulary.',
     },
   },
-  android: {
-    package: 'com.languageflashcardsbank.app',
-    permissions: ['android.permission.CAMERA', 'android.permission.READ_EXTERNAL_STORAGE'],
-    adaptiveIcon: {
-      backgroundColor: '#E6F4FE',
-      foregroundImage: './assets/images/android-icon-foreground.png',
-      backgroundImage: './assets/images/android-icon-background.png',
-      monochromeImage: './assets/images/android-icon-monochrome.png',
-    },
-    edgeToEdgeEnabled: true,
-    predictiveBackGestureEnabled: false,
-  },
-  web: {
-    output: 'static',
-    favicon: './assets/images/favicon.png',
-  },
   plugins: [
     'expo-router',
     [

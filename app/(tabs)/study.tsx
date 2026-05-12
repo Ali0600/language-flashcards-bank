@@ -99,6 +99,7 @@ export default function StudyScreen() {
   }
 
   const card = queue[index];
+  if (!card) return null;
 
   const onRate = async (rating: ReviewRating) => {
     if (submitting) return;
@@ -177,6 +178,8 @@ export default function StudyScreen() {
             <Pressable
               key={r.label}
               disabled={submitting}
+              accessibilityRole="button"
+              accessibilityLabel={`Rate ${r.label}`}
               style={[styles.ratingBtn, { backgroundColor: r.color }, submitting && styles.btnDisabled]}
               onPress={() => onRate(r.rating)}>
               <ThemedText style={styles.ratingLabel}>{r.label}</ThemedText>

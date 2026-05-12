@@ -25,9 +25,10 @@ function dbCardToState(c: typeof cards.$inferSelect): FsrsState {
 export async function rateCard(cardId: string, rating: ReviewRating): Promise<void> {
   await db.transaction(async (tx) => {
     const rows = await tx.select().from(cards).where(eq(cards.id, cardId)).limit(1).all();
-    if (rows.length === 0) throw new Error(`Card not found: ${cardId}`);
+    const row = rows[0];
+    if (!row) throw new Error(`Card not found: ${cardId}`);
 
-    const prev = dbCardToState(rows[0]);
+    const prev = dbCardToState(row);
     const outcome = review(prev, rating);
 
     await tx

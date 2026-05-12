@@ -54,8 +54,9 @@ export default function CaptureScreen() {
       mediaTypes: ['images'],
       quality: 0.7,
     });
-    if (!result.canceled && result.assets[0]?.uri) {
-      await runPipeline(result.assets[0].uri);
+    const uri = result.canceled ? null : result.assets[0]?.uri;
+    if (uri) {
+      await runPipeline(uri);
     }
   };
 
@@ -89,7 +90,7 @@ export default function CaptureScreen() {
 
   return (
     <View style={styles.container}>
-      <CameraView ref={cameraRef} style={styles.camera} facing="back" />
+      <CameraView ref={cameraRef} style={styles.camera} facing="back" active={!processing} />
       <View style={styles.controls}>
         <Pressable
           accessibilityRole="button"

@@ -17,9 +17,10 @@ export const DEFAULT_SETTINGS = {
 
 export async function getSetting<T>(key: SettingKey, fallback: T): Promise<T> {
   const rows = await db.select().from(settings).where(eq(settings.key, key)).limit(1).all();
-  if (rows.length === 0) return fallback;
+  const row = rows[0];
+  if (!row) return fallback;
   try {
-    return JSON.parse(rows[0].value) as T;
+    return JSON.parse(row.value) as T;
   } catch {
     return fallback;
   }
