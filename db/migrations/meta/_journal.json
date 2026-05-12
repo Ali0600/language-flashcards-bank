@@ -22,6 +22,13 @@
       "when": 1778598689169,
       "tag": "0002_clumsy_misty_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1778598968185,
+      "tag": "0003_lying_sinister_six",
+      "breakpoints": true
     }
   ]
 }
