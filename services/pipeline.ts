@@ -5,8 +5,6 @@ import uuid from 'react-native-uuid';
 import { db } from '@/db/client';
 import { cards, cardSightings, photos, type NewCard, type NewCardSighting } from '@/db/schema';
 import type { WordAnalysis } from '@/lib/types';
-import { analyzeWords } from './analyze';
-import { assessOcrQuality, recognizeText } from './ocr';
 import { emptyState } from './scheduler';
 import { shouldKeepWord } from './stoplist';
 import { analyzeImage } from './vision';
@@ -26,8 +24,6 @@ function persistPhoto(sourceUri: string, photoId: string): string {
 
 export type ScanOutcome = {
   photoId: string;
-  source: 'mlkit' | 'gemini-vision';
-  ocrReason: string;
   rawText: string;
   results: Array<{
     word: WordAnalysis;
@@ -41,26 +37,10 @@ export async function processPhoto(imageUri: string): Promise<ScanOutcome> {
   const photoId = id();
   const now = Date.now();
 
-  const ocr = await recognizeText(imageUri);
-  const verdict = assessOcrQuality(ocr);
-
-  let analyzed: WordAnalysis[];
-  let rawText: string;
-  let source: 'mlkit' | 'gemini-vision';
-  let category: string | null = null;
-
-  if (verdict.shouldUseLlm) {
-    const visionResult = await analyzeImage(imageUri);
-    analyzed = visionResult.words;
-    rawText = visionResult.rawText;
-    source = 'gemini-vision';
-    category = visionResult.category;
-  } else {
-    const surfaces = uniqueStrings(ocr.elements.map((e) => e.text));
-    analyzed = await analyzeWords(surfaces);
-    rawText = ocr.fullText;
-    source = 'mlkit';
-  }
+  const visionResult = await analyzeImage(imageUri);
+  const analyzed = visionResult.words;
+  const rawText = visionResult.rawText;
+  const category = visionResult.category;
 
   const filtered = analyzed.filter(shouldKeepWord);
   const deduped = dedupeByLemma(filtered).filter((w) => w.lemma.trim().length > 0);
@@ -73,7 +53,6 @@ export async function processPhoto(imageUri: string): Promise<ScanOutcome> {
       takenAt: now,
       imageUri: permanentUri,
       rawOcrText: rawText,
-      ocrSource: source,
       category,
     });
 
@@ -170,25 +149,9 @@ export async function processPhoto(imageUri: string): Promise<ScanOutcome> {
 
   return {
     photoId,
-    source,
-    ocrReason: verdict.reason,
     rawText,
     results,
   };
-}
-
-function uniqueStrings(arr: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const s of arr) {
-    const t = s.trim();
-    if (!t) continue;
-    const key = t.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(t);
-  }
-  return out;
 }
 
 function dedupeByLemma(words: WordAnalysis[]): WordAnalysis[] {

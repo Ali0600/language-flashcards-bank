@@ -45,9 +45,6 @@ export default function ScanResultsScreen() {
         <ThemedText type="subtitle">
           {rows.length} word{rows.length === 1 ? '' : 's'} extracted
         </ThemedText>
-        <ThemedText style={styles.subtle}>
-          via {photo.ocrSource === 'gemini-vision' ? 'Gemini Vision' : 'on-device OCR'}
-        </ThemedText>
       </View>
 
       {rows.length === 0 ? (

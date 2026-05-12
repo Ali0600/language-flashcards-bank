@@ -6,7 +6,6 @@ export const photos = sqliteTable('photos', {
   takenAt: integer('taken_at').notNull(),
   imageUri: text('image_uri').notNull(),
   rawOcrText: text('raw_ocr_text'),
-  ocrSource: text('ocr_source', { enum: ['mlkit', 'gemini-vision'] }),
   category: text('category'),
 });
 

@@ -10,15 +10,3 @@ export type WordAnalysis = {
   exampleEn: string;
   plural: string | null;
 };
-
-export type OcrElement = {
-  text: string;
-  confidence: number;
-};
-
-export type OcrResult = {
-  fullText: string;
-  elements: OcrElement[];
-  avgConfidence: number;
-  source: 'mlkit' | 'gemini-vision';
-};
