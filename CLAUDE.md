@@ -16,6 +16,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npx drizzle-kit generate` — Regenerate SQL migrations from `db/schema.ts` after a schema change
 - `npx tsc --noEmit` — Type-check without emitting JS
 - `npm run lint` — `expo lint` over the project
+- `npm test` — Run Jest unit tests (jest-expo preset)
+- `npm run test:watch` — Jest in watch mode
 
 ## Architecture
 
@@ -24,10 +26,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Capture pipeline:** photo → Gemini Vision API → JSON of words (lemma, gender, POS, translation, example) → dedup by lemma → persist as cards + sightings in op-sqlite. There is no on-device OCR (ML Kit was removed; see Important Notes). Every photo goes straight to Gemini Vision.
 
 **Data model (op-sqlite via Drizzle ORM, see [db/schema.ts](db/schema.ts)):**
-- `photos` — id, takenAt, imageUri, rawOcrText, ocrSource
+- `photos` — id, takenAt, imageUri, rawOcrText, category (one of 11 fixed folder slugs or null for legacy rows)
 - `cards` — id, **lemma (unique, dedup key)**, gender (der/die/das/null), pos, translationEn, exampleDe, exampleEn, plural, plus flat FSRS state columns (due, stability, difficulty, reps, lapses, state, lastReview, learningSteps, elapsedDays, scheduledDays)
 - `card_sightings` — id, cardId, photoId, surfaceForm, seenAt (one row per word-in-photo; `seen_count = COUNT(*)` derived)
 - `review_logs` — id, cardId, rating, reviewedAt, plus FSRS snapshot fields for audit
+- `settings` — key/value/updatedAt, JSON-serialized values; keys are `dailyNewCardLimit`, `playInSilentMode`
 
 **Frequency-suggestion query** (Library "by Frequency" sort + future Study suggested-next rail):
 ```sql
@@ -37,25 +40,37 @@ GROUP BY c.id ORDER BY freq DESC;
 ```
 
 **Routing (Expo Router, file-based, see [app/](app/)):**
-- `app/_layout.tsx` — Root layout. Runs Drizzle migrations on launch via `useMigrations(db, migrations)`, seeds 5 mock cards on first run, then renders the `(tabs)` group.
-- `app/(tabs)/_layout.tsx` — Tab navigator. `unstable_settings.initialRouteName = 'library'` so the app opens to Library, not the live camera.
-- `app/(tabs)/library.tsx` — Default tab. Lists all cards with sort modes (frequency, A–Z, due).
-- `app/(tabs)/study.tsx` — Due cards with flip + Again/Hard/Good/Easy buttons. **Rating buttons are no-ops** until Phase 4 wires `services/scheduler.ts` in.
-- `app/(tabs)/index.tsx` — Capture tab (rightmost). expo-camera live preview + shutter + photo-library picker.
+- `app/_layout.tsx` — Root layout. Holds the native splash screen via `SplashScreen.preventAutoHideAsync()`, runs Drizzle migrations on launch via `useMigrations(db, migrations)`, seeds mock cards (gated behind `__DEV__`), reads the `playInSilentMode` setting to configure `expo-audio`, then renders the `(tabs)` group and dismisses the splash.
+- `app/(tabs)/_layout.tsx` — Tab navigator.
+- `app/(tabs)/index.tsx` — **Library tab.** Cards / Folders view-mode toggle, search, sort chips (frequency / A–Z / due), pull-to-refresh, gear icon → `/settings`.
+- `app/(tabs)/study.tsx` — Due-cards study. Snapshots the queue locally on first load so mid-session tab-switches don't shuffle it. "Start over" calls `refetch()` to pull a fresh queue.
+- `app/(tabs)/stats.tsx` — Card-state breakdown, totals, top-frequency lemmas, CSV export button.
+- `app/(tabs)/capture.tsx` — `CameraView` (paused during processing) + photo-library picker.
 - `app/scan/[id].tsx` — Post-capture results: each extracted word with NEW badge or sighting count.
-- `app/card/[id].tsx` — Card detail: translation, example, FSRS state, list of source photo sightings.
+- `app/card/[id].tsx` — Card detail with edit/delete, sighting list, listen button.
+- `app/folder/[slug].tsx` — Cards belonging to a single folder category.
+- `app/photo/[id].tsx` — Full-screen photo viewer (modal).
+- `app/settings.tsx` — Daily new-card limit stepper + silent-mode toggle (modal).
 
-**Services ([services/](services/)):**
-- `pipeline.ts` — Orchestrates capture → vision → DB. Always uses `analyzeImage` from `vision.ts` since on-device OCR is stubbed out.
-- `vision.ts` — Gemini 2.5 Flash with structured-output JSON schema; reads image as base64 via expo-file-system's new `File` API.
-- `analyze.ts` — Text-only Gemini call for already-extracted words (currently unused; the pipeline always uses vision).
-- `ocr.ts` — Stub. Returns "shouldUseLlm: true" so the pipeline falls through to vision. Will be re-enabled if/when we can run an on-device OCR alternative on simulator + device.
-- `scheduler.ts` — ts-fsrs (FSRS-6) wrapper. `emptyState()`, `review()`, `cardToState()`, `stateToCard()`. Ready to wire into Study screen in Phase 4.
-- `stoplist.ts` — POS-based filter (skip det/pron/num/propn/conj/etc.) + small German function-word set (`der/die/das/und/...`).
+**Services ([services/](services/)):** orchestrators talk to native modules and the DB; pure helpers are extracted to dedicated files so they can be unit-tested without pulling in op-sqlite/expo-file-system/etc.
+- `pipeline.ts` — Orchestrator. Resize image → Gemini Vision → filter + dedupe → one `db.transaction` insert (photo + cards + sightings) → batched `COUNT(*) GROUP BY` for sighting counts.
+- `pipeline-helpers.ts` — Pure `dedupeByLemma` (testable).
+- `vision.ts` — Gemini 2.5 Flash. Resizes image to ≤1600px via `expo-image-manipulator` before base64, passes an `AbortSignal` with a 30s timeout, retries once on network/5xx.
+- `scheduler.ts` — ts-fsrs (FSRS-6) wrapper. `emptyState()`, `review()`, `cardToState()`, `stateToCard()`.
+- `review.ts` — `rateCard(id, rating)`. Update + log insert wrapped in one `db.transaction`.
+- `card.ts` — Edit/delete card mutations.
+- `export.ts` — CSV export orchestrator (DB + file write + iOS share sheet).
+- `csv.ts` — Pure `buildCsv`, `csvEscape`, `stateLabel` (testable). Prepends UTF-8 BOM so Excel reads umlauts.
+- `settings.ts` — `getSetting<T>` / `setSetting<T>` over the `settings` table.
+- `speech.ts` — `speakGerman(text)` wrapper around `expo-speech`.
+- `stoplist.ts` — POS-based filter + German function-word set.
 
-**Hooks ([hooks/](hooks/)):**
-- `use-cards.ts` — `useDueCards()`, `useLibrary(sort)`, `useCard(id)`, `useCardSightings(cardId)`. All use `useFocusEffect` to reload on tab focus.
-- `use-scan.ts` — `useScan(photoId)` joins photos × sightings × cards for the scan results screen.
+**Hooks ([hooks/](hooks/)):** all data hooks are built on `useAsyncQuery` ([hooks/use-async-query.ts](hooks/use-async-query.ts)) which returns `{ loading, data, error, refetch }` and handles the `cancelled` flag + Promise-returning refetch. When adding a new data hook, use this helper rather than re-implementing the pattern.
+- `use-cards.ts` — `useDueCards`, `useLibrary(sort)`, `useCard(id)`, `useFrequencyRanking(limit)`, `useCardSightings(cardId)`.
+- `use-folders.ts` — `useFolders` (count by category), `useFolderCards(slug)`.
+- `use-stats.ts` — `useStats` for the Stats tab.
+- `use-scan.ts` — Joins photos × sightings × cards for the scan results screen.
+- `use-settings.ts` — `useDailyNewCardLimit`, `usePlayInSilentMode`.
 
 **State:** No global state library. Drizzle queries are the source of truth; hooks reload via `useFocusEffect`. Card sightings (for frequency) are computed by an extra SELECT — fine at our scale, swap to a window function or denormalized counter later if needed.
 
@@ -72,7 +87,10 @@ GROUP BY c.id ORDER BY freq DESC;
 - **EAS Update channels and branches are not the same thing.** `eas update --branch X` publishes to a branch. Builds query a channel. For updates to flow, a channel must exist that points to the branch. After the first build for a new profile, run `eas channel:create <profile-name>` if `eas channel:list` is empty.
 - **Build profiles MUST set `"channel"` explicitly in `eas.json`.** `eas update:configure` is supposed to add this, but it bails on dynamic `app.config.ts` projects and leaves the channel unset. A build with no channel queries EAS Update without a channel parameter, silently misses every update, and the failure mode is invisible (no error, just no badge / no new bundle). Verify with `cat eas.json | grep channel` — every build profile that should receive updates needs it.
 - `CocoaPods` requires `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8` set in the shell or `pod install` errors with `Encoding::CompatibilityError` (Ruby 4 + CocoaPods 1.16). EAS Build handles this server-side; only matters if running `pod install` locally.
-- Node is installed via `fnm`. Shell needs `eval "$(fnm env --shell zsh)"` before `node`/`npm`/`eas`/`expo` resolve. Consider adding it to `~/.zshrc`.
+- Node is installed via `fnm`. Shell needs `eval "$(fnm env --shell zsh)"` before `node`/`npm`/`eas`/`expo` resolve. Add it to `~/.zshrc` so every interactive terminal has it; `~/.zshenv` if you need non-interactive shells (e.g. VS Code task runners) to find Node too.
+- **`tsconfig.json` has `noUncheckedIndexedAccess: true`.** Array indexing returns `T | undefined`. When you write `arr[i]`, expect TS to flag uses that don't account for `undefined`. Prefer `arr[i]?.foo` or destructuring with defaults; use `arr[i]!` only when you've just bounds-checked.
+- **Pure helpers go in dedicated files so they're testable.** Anything that doesn't need native modules (CSV builders, lemma dedup, FSRS conversions, stoplist checks, slug normalization) lives in its own file with a matching `__tests__/*.test.ts`. The convention is `services/<thing>-helpers.ts` or `services/<thing>.ts`. Orchestrators that touch the DB or native modules stay separate so their tests would need mocking.
+- **CI runs on every push and PR** via [.github/workflows/ci.yml](.github/workflows/ci.yml): `npx tsc --noEmit`, `npm run lint`, `npm test`. Red status = something broke. Jest uses the `jest-expo` preset with `@/` path alias; jest globals (`describe`, `it`, `expect`, …) are scoped to `**/__tests__/**` and `*.test.ts(x)` in [eslint.config.js](eslint.config.js).
 
 ## Library Documentation
 
