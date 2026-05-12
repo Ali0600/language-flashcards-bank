@@ -1,4 +1,4 @@
-import { File } from 'expo-file-system';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { GoogleGenAI, Type } from '@google/genai';
 
 import { FOLDER_SLUGS, normalizeCategory, type FolderSlug } from '@/constants/folders';
@@ -6,6 +6,8 @@ import { assertGeminiKey } from '@/lib/env';
 import type { WordAnalysis } from '@/lib/types';
 
 const MODEL = 'gemini-2.5-flash';
+const REQUEST_TIMEOUT_MS = 30_000;
+const MAX_IMAGE_DIMENSION = 1600;
 
 const wordSchema = {
   type: Type.OBJECT,
@@ -27,7 +29,7 @@ const responseSchema = {
   properties: {
     rawText: { type: Type.STRING },
     words: { type: Type.ARRAY, items: wordSchema },
-    category: { type: Type.STRING, enum: FOLDER_SLUGS as unknown as string[] },
+    category: { type: Type.STRING, enum: [...FOLDER_SLUGS] },
   },
   required: ['rawText', 'words', 'category'],
 };
@@ -74,32 +76,74 @@ export type VisionResult = {
   category: FolderSlug | null;
 };
 
-export async function analyzeImage(imageUri: string): Promise<VisionResult> {
+async function resizeAndEncode(imageUri: string): Promise<string> {
+  const resized = await manipulateAsync(
+    imageUri,
+    [{ resize: { width: MAX_IMAGE_DIMENSION } }],
+    { compress: 0.85, format: SaveFormat.JPEG, base64: true },
+  );
+  if (!resized.base64) {
+    throw new Error('Image manipulator returned no base64 data');
+  }
+  return resized.base64;
+}
+
+function isRetryableError(err: unknown): boolean {
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase();
+    if (msg.includes('aborted')) return false;
+    if (msg.includes('timeout') || msg.includes('network')) return true;
+    if (/\b5\d\d\b/.test(msg)) return true;
+    if (msg.includes('fetch failed')) return true;
+  }
+  return false;
+}
+
+async function callGemini(base64: string): Promise<string | undefined> {
   const apiKey = assertGeminiKey();
   const ai = new GoogleGenAI({ apiKey });
 
-  const base64 = await new File(imageUri).base64();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  const response = await ai.models.generateContent({
-    model: MODEL,
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          { inlineData: { mimeType: 'image/jpeg', data: base64 } },
-          { text: 'Transcribe and extract German vocabulary from this image.' },
-        ],
+  try {
+    const response = await ai.models.generateContent({
+      model: MODEL,
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { inlineData: { mimeType: 'image/jpeg', data: base64 } },
+            { text: 'Transcribe and extract German vocabulary from this image.' },
+          ],
+        },
+      ],
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        responseMimeType: 'application/json',
+        responseSchema,
+        temperature: 0.2,
+        abortSignal: controller.signal,
       },
-    ],
-    config: {
-      systemInstruction: SYSTEM_PROMPT,
-      responseMimeType: 'application/json',
-      responseSchema,
-      temperature: 0.2,
-    },
-  });
+    });
+    return response.text;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
-  const text = response.text;
+export async function analyzeImage(imageUri: string): Promise<VisionResult> {
+  const base64 = await resizeAndEncode(imageUri);
+
+  let text: string | undefined;
+  try {
+    text = await callGemini(base64);
+  } catch (err) {
+    if (!isRetryableError(err)) throw err;
+    console.warn('Gemini call failed, retrying once:', err);
+    text = await callGemini(base64);
+  }
+
   if (!text) return { rawText: '', words: [], category: null };
 
   const parsed = JSON.parse(text) as {

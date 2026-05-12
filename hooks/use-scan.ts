@@ -1,6 +1,6 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, inArray, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { cardSightings, cards, photos, type Photo } from '@/db/schema';
@@ -68,13 +68,17 @@ export function useScan(photoId: string | undefined): ScanData {
 
           const cardIds = Array.from(new Set(sightingRows.map((s) => s.cardId)));
           const counts = new Map<string, number>();
-          for (const cardId of cardIds) {
-            const total = await db
-              .select({ id: cardSightings.id })
+          if (cardIds.length > 0) {
+            const totals = await db
+              .select({
+                cardId: cardSightings.cardId,
+                count: sql<number>`COUNT(*)`.as('total_sightings'),
+              })
               .from(cardSightings)
-              .where(eq(cardSightings.cardId, cardId))
+              .where(inArray(cardSightings.cardId, cardIds))
+              .groupBy(cardSightings.cardId)
               .all();
-            counts.set(cardId, total.length);
+            for (const t of totals) counts.set(t.cardId, t.count);
           }
 
           const rows: ScanRow[] = sightingRows.map((s) => ({

@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
@@ -12,6 +12,7 @@ import { rateCard, type ReviewRating } from '@/services/review';
 import { Rating } from '@/services/scheduler';
 import { speakGerman } from '@/services/speech';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import type { Card } from '@/db/schema';
 
 const RATINGS: { label: string; rating: ReviewRating; color: string }[] = [
   { label: 'Again', rating: Rating.Again, color: '#E74C3C' },
@@ -25,14 +26,21 @@ export default function StudyScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const tint = Colors[colorScheme].tint;
   const onTint = Colors[colorScheme].background;
-  const { loading, data: dueCards, error } = useDueCards();
+  const { loading, data: dueCards, error, refetch } = useDueCards();
   const { data: suggested } = useFrequencyRanking(5);
+  const [queue, setQueue] = useState<Card[] | null>(null);
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [sessionCount, setSessionCount] = useState(0);
 
-  if (loading) {
+  useEffect(() => {
+    if (queue === null && !loading && dueCards.length > 0) {
+      setQueue(dueCards);
+    }
+  }, [queue, loading, dueCards]);
+
+  if (loading && queue === null) {
     return (
       <ThemedView style={styles.center}>
         <ActivityIndicator />
@@ -48,7 +56,7 @@ export default function StudyScreen() {
     );
   }
 
-  if (dueCards.length === 0) {
+  if (queue === null || queue.length === 0) {
     return (
       <ThemedView style={styles.center}>
         <ThemedText type="title">All caught up</ThemedText>
@@ -67,7 +75,7 @@ export default function StudyScreen() {
     );
   }
 
-  if (index >= dueCards.length) {
+  if (index >= queue.length) {
     return (
       <ThemedView style={styles.center}>
         <ThemedText type="title">Session complete</ThemedText>
@@ -81,6 +89,8 @@ export default function StudyScreen() {
             setIndex(0);
             setSessionCount(0);
             setRevealed(false);
+            setQueue(null);
+            refetch();
           }}>
           <ThemedText>Start over</ThemedText>
         </Pressable>
@@ -88,7 +98,7 @@ export default function StudyScreen() {
     );
   }
 
-  const card = dueCards[index];
+  const card = queue[index];
 
   const onRate = async (rating: ReviewRating) => {
     if (submitting) return;
@@ -120,7 +130,7 @@ export default function StudyScreen() {
         <SuggestedRail items={suggested} tint={tint} onTint={onTint} onTap={(c) => router.push(`/card/${c.id}`)} />
       )}
       <ThemedText style={styles.progress}>
-        {index + 1} / {dueCards.length}
+        {index + 1} / {queue.length}
       </ThemedText>
 
       <Pressable

@@ -81,7 +81,7 @@ export async function exportCardsToCsv(): Promise<{ shared: boolean }> {
     );
   }
 
-  const csv = lines.join('\n');
+  const csv = '﻿' + lines.join('\n');
   const file = new File(Paths.cache, 'language-flashcards-export.csv');
   if (file.exists) file.delete();
   file.create();
