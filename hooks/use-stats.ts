@@ -3,7 +3,7 @@ import { useCallback, useState } from 'react';
 import { and, count, desc, eq, gte, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
-import { cardSightings, cards, reviewLogs } from '@/db/schema';
+import { cardSightings, cards, photos, reviewLogs } from '@/db/schema';
 
 export type StateBreakdown = { new: number; learning: number; review: number; relearning: number };
 
@@ -78,9 +78,9 @@ export function useStats() {
             .from(cardSightings)
             .all();
 
-          const photoRows = await db
-            .selectDistinct({ photoId: cardSightings.photoId })
-            .from(cardSightings)
+          const [{ n: totalPhotos } = { n: 0 }] = await db
+            .select({ n: count() })
+            .from(photos)
             .all();
 
           const freqQ = sql<number>`COUNT(${cardSightings.id})`.as('freq');
@@ -105,7 +105,7 @@ export function useStats() {
             breakdown,
             totalReviews,
             reviewsToday,
-            totalPhotos: photoRows.length,
+            totalPhotos,
             totalSightings,
             topFrequency: topRows
               .filter((r) => r.freq > 0)

@@ -27,6 +27,13 @@ export const Colors = {
   },
 };
 
+export const Ratings = {
+  again: '#E74C3C',
+  hard: '#F39C12',
+  good: '#27AE60',
+  easy: '#2980B9',
+} as const;
+
 export const Fonts = Platform.select({
   ios: {
     /** iOS `UIFontDescriptorSystemDesignDefault` */

@@ -14,6 +14,7 @@ import migrations from '@/db/migrations/migrations';
 import { seedIfEmpty } from '@/db/seed';
 import { ThemedText } from '@/components/themed-text';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { DEFAULT_SETTINGS, getSetting, SettingKeys } from '@/services/settings';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -47,10 +48,15 @@ export default function RootLayout() {
   }, [error]);
 
   useEffect(() => {
-    setAudioModeAsync({ playsInSilentMode: true }).catch((e) =>
-      console.error('setAudioModeAsync failed', e),
-    );
-  }, []);
+    if (!success || !seeded) return;
+    (async () => {
+      const playInSilentMode = await getSetting<boolean>(
+        SettingKeys.playInSilentMode,
+        DEFAULT_SETTINGS.playInSilentMode,
+      );
+      await setAudioModeAsync({ playsInSilentMode: playInSilentMode });
+    })().catch((e) => console.error('setAudioModeAsync failed', e));
+  }, [success, seeded]);
 
   useEffect(() => {
     const checkForOTAUpdate = async () => {

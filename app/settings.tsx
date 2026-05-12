@@ -1,11 +1,12 @@
+import { setAudioModeAsync } from 'expo-audio';
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useDailyNewCardLimit } from '@/hooks/use-settings';
+import { useDailyNewCardLimit, usePlayInSilentMode } from '@/hooks/use-settings';
 
 const STEPS = [0, 5, 10, 15, 20, 30, 50];
 
@@ -15,6 +16,14 @@ export default function SettingsScreen() {
   const tint = Colors[colorScheme].tint;
   const onTint = Colors[colorScheme].background;
   const { limit, setLimit, loading } = useDailyNewCardLimit();
+  const { enabled: playInSilentMode, setEnabled: setPlayInSilentMode } = usePlayInSilentMode();
+
+  const onTogglePlayInSilentMode = async (next: boolean) => {
+    await setPlayInSilentMode(next);
+    setAudioModeAsync({ playsInSilentMode: next }).catch((e) =>
+      console.error('setAudioModeAsync failed', e),
+    );
+  };
 
   return (
     <ThemedView style={styles.container}>
@@ -69,6 +78,23 @@ export default function SettingsScreen() {
             {`Set to 0 to pause introducing new cards entirely (you'll still see learning/review cards).`}
           </ThemedText>
         </View>
+
+        <View style={styles.section}>
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleLabels}>
+              <ThemedText type="subtitle">Play sound through silent switch</ThemedText>
+              <ThemedText style={styles.help}>
+                When on, German pronunciation plays even when the iPhone silent switch is engaged.
+                Turn off to respect the silent switch.
+              </ThemedText>
+            </View>
+            <Switch
+              value={playInSilentMode}
+              onValueChange={onTogglePlayInSilentMode}
+              trackColor={{ true: tint }}
+            />
+          </View>
+        </View>
       </ScrollView>
 
       <Pressable style={[styles.doneBtn, { backgroundColor: tint }]} onPress={() => router.back()}>
@@ -111,6 +137,13 @@ const styles = StyleSheet.create({
   },
   presetText: { fontSize: 14 },
   note: { opacity: 0.5, fontSize: 13, fontStyle: 'italic', marginTop: 4 },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  toggleLabels: { flex: 1, gap: 6 },
   doneBtn: {
     marginHorizontal: 20,
     marginBottom: 24,

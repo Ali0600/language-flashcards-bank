@@ -5,7 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'reac
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Colors } from '@/constants/theme';
+import { Colors, Ratings } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useDueCards, useFrequencyRanking, type FrequentNewCard } from '@/hooks/use-cards';
 import { rateCard, type ReviewRating } from '@/services/review';
@@ -15,10 +15,10 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import type { Card } from '@/db/schema';
 
 const RATINGS: { label: string; rating: ReviewRating; color: string }[] = [
-  { label: 'Again', rating: Rating.Again, color: '#E74C3C' },
-  { label: 'Hard', rating: Rating.Hard, color: '#F39C12' },
-  { label: 'Good', rating: Rating.Good, color: '#27AE60' },
-  { label: 'Easy', rating: Rating.Easy, color: '#2980B9' },
+  { label: 'Again', rating: Rating.Again, color: Ratings.again },
+  { label: 'Hard', rating: Rating.Hard, color: Ratings.hard },
+  { label: 'Good', rating: Rating.Good, color: Ratings.good },
+  { label: 'Easy', rating: Rating.Easy, color: Ratings.easy },
 ];
 
 export default function StudyScreen() {

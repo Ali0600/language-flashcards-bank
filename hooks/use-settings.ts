@@ -34,3 +34,34 @@ export function useDailyNewCardLimit() {
 
   return { limit, loading, setLimit: update };
 }
+
+export function usePlayInSilentMode() {
+  const [enabled, setEnabledState] = useState<boolean>(DEFAULT_SETTINGS.playInSilentMode);
+  const [loading, setLoading] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      getSetting<boolean>(SettingKeys.playInSilentMode, DEFAULT_SETTINGS.playInSilentMode)
+        .then((v) => {
+          if (!cancelled) {
+            setEnabledState(v);
+            setLoading(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
+
+  const update = useCallback(async (next: boolean) => {
+    setEnabledState(next);
+    await setSetting(SettingKeys.playInSilentMode, next);
+  }, []);
+
+  return { enabled, loading, setEnabled: update };
+}
