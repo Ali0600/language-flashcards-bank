@@ -120,6 +120,10 @@ export default function RootLayout() {
           name="ignored"
           options={{ presentation: 'modal', headerShown: true, title: 'Ignored words' }}
         />
+        <Stack.Screen
+          name="focus"
+          options={{ presentation: 'modal', headerShown: true, title: 'Focus region' }}
+        />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>

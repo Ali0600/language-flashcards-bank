@@ -9,6 +9,7 @@ import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useFocusRegionBeforeScan } from '@/hooks/use-settings';
 import { processPhoto } from '@/services/pipeline';
 
 export default function CaptureScreen() {
@@ -20,8 +21,14 @@ export default function CaptureScreen() {
   const cameraRef = useRef<CameraView>(null);
   const [processing, setProcessing] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('Analyzing photo…');
+  const { enabled: focusBeforeScan } = useFocusRegionBeforeScan();
 
-  const runPipeline = async (uri: string) => {
+  const handleCapturedUri = async (uri: string) => {
+    if (focusBeforeScan) {
+      // Hand off to the focus screen, which crops then calls processPhoto itself.
+      router.push(`/focus?uri=${encodeURIComponent(uri)}` as never);
+      return;
+    }
     setProcessing(true);
     setProcessingMessage('Analyzing photo…');
     try {
@@ -42,7 +49,7 @@ export default function CaptureScreen() {
         quality: 0.7,
         skipProcessing: false,
       });
-      if (photo?.uri) await runPipeline(photo.uri);
+      if (photo?.uri) await handleCapturedUri(photo.uri);
     } catch (e) {
       Alert.alert('Capture failed', e instanceof Error ? e.message : String(e));
     }
@@ -56,7 +63,7 @@ export default function CaptureScreen() {
     });
     const uri = result.canceled ? null : result.assets[0]?.uri;
     if (uri) {
-      await runPipeline(uri);
+      await handleCapturedUri(uri);
     }
   };
 

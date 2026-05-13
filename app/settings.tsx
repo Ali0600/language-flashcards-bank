@@ -10,6 +10,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import {
   useAutoCreateReverseCards,
   useDailyNewCardLimit,
+  useFocusRegionBeforeScan,
   usePlayInSilentMode,
 } from '@/hooks/use-settings';
 import { bulkCreateReverses } from '@/services/card';
@@ -24,6 +25,7 @@ export default function SettingsScreen() {
   const { limit, setLimit, loading } = useDailyNewCardLimit();
   const { enabled: playInSilentMode, setEnabled: setPlayInSilentMode } = usePlayInSilentMode();
   const { enabled: autoReverse, setEnabled: setAutoReverse } = useAutoCreateReverseCards();
+  const { enabled: focusBeforeScan, setEnabled: setFocusBeforeScan } = useFocusRegionBeforeScan();
   const [generatingReverses, setGeneratingReverses] = useState(false);
 
   const onGenerateAllReverses = () => {
@@ -128,6 +130,24 @@ export default function SettingsScreen() {
             <Switch
               value={playInSilentMode}
               onValueChange={onTogglePlayInSilentMode}
+              trackColor={{ true: tint }}
+            />
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleLabels}>
+              <ThemedText type="subtitle">Focus region before scanning</ThemedText>
+              <ThemedText style={styles.help}>
+                When on, every photo (camera or library) opens a preview where you can drag
+                a rectangle to focus the scan on one region. Smaller scans use less Gemini
+                quota and finish faster.
+              </ThemedText>
+            </View>
+            <Switch
+              value={focusBeforeScan}
+              onValueChange={setFocusBeforeScan}
               trackColor={{ true: tint }}
             />
           </View>
