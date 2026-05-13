@@ -110,7 +110,24 @@ function isRetryableError(err: unknown): boolean {
   return false;
 }
 
-async function callGemini(base64: string): Promise<string | undefined> {
+function buildUserPrompt(focusRegion: BBox | null): string {
+  if (!focusRegion) {
+    return 'Transcribe and extract German vocabulary from this image.';
+  }
+  const [ymin, xmin, ymax, xmax] = focusRegion;
+  // Region hint: send the full image (so category + rawText stay accurate),
+  // but constrain word extraction to the user-highlighted rectangle. Words
+  // whose center sits inside this rectangle should be extracted; words
+  // outside it should be skipped.
+  return [
+    'Transcribe and extract German vocabulary from this image.',
+    `The user has highlighted a focus region: [ymin=${ymin}, xmin=${xmin}, ymax=${ymax}, xmax=${xmax}] in 0–1000 normalized coordinates.`,
+    'For the "words" array, ONLY include words whose bounding-box center falls inside that region. Skip all other words.',
+    'Still transcribe the FULL visible text in the image into "rawText" (not just the region), and classify the ENTIRE scene into "category" as usual.',
+  ].join(' ');
+}
+
+async function callGemini(base64: string, focusRegion: BBox | null): Promise<string | undefined> {
   const apiKey = assertGeminiKey();
   const ai = new GoogleGenAI({ apiKey });
 
@@ -129,7 +146,7 @@ async function callGemini(base64: string): Promise<string | undefined> {
           role: 'user',
           parts: [
             { inlineData: { mimeType: 'image/jpeg', data: base64 } },
-            { text: 'Transcribe and extract German vocabulary from this image.' },
+            { text: buildUserPrompt(focusRegion) },
           ],
         },
       ],
@@ -154,16 +171,20 @@ async function callGemini(base64: string): Promise<string | undefined> {
   }
 }
 
-export async function analyzeImage(imageUri: string): Promise<VisionResult> {
+export async function analyzeImage(
+  imageUri: string,
+  opts?: { focusRegion?: BBox | null },
+): Promise<VisionResult> {
   const base64 = await resizeAndEncode(imageUri);
+  const focusRegion = opts?.focusRegion ?? null;
 
   let text: string | undefined;
   try {
-    text = await callGemini(base64);
+    text = await callGemini(base64, focusRegion);
   } catch (err) {
     if (!isRetryableError(err)) throw err;
     console.warn('Gemini call failed, retrying once:', err);
-    text = await callGemini(base64);
+    text = await callGemini(base64, focusRegion);
   }
 
   if (!text) return { rawText: '', words: [], category: null };

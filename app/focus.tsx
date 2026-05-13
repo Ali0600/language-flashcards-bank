@@ -1,5 +1,4 @@
 import { Image } from 'expo-image';
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
 import {
@@ -14,32 +13,36 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import type { BBox } from '@/lib/types';
 import { containRect } from '@/services/bbox';
 import {
-  containerSelectionToImageCrop,
-  isViableCrop,
-  padCropRect,
+  containerSelectionToNormalizedRegion,
   type SelectionRect,
 } from '@/services/focus-crop';
 import { processPhoto } from '@/services/pipeline';
 
-const CROP_PADDING_FRAC = 0.05;
-const MIN_CROP_DIMENSION_PX = 80;
+// Reject vanishingly small regions in normalized space (0–1000). A 50-point
+// minimum corresponds to ~5% of the image's smaller dimension — about the
+// size of a single small word on a 1600px image.
+const MIN_REGION_DIMENSION = 50;
 
 /**
- * Modal screen that lets the user draw a rectangle over a just-captured (or
- * just-picked) image to focus the Gemini scan on a region. Cropping is done
- * here with expo-image-manipulator, then the cropped URI is handed off to the
- * standard pipeline. The route is only reached when the
- * `focusRegionBeforeScan` setting is on.
+ * Modal screen shown after every camera capture / library pick. The user can
+ * drag a rectangle over the image to focus the scan on one region. We do NOT
+ * crop the file — instead we send the full image to Gemini along with a
+ * normalized region hint in the prompt, so word extraction stays focused while
+ * scene classification + raw text capture still see the whole photo.
  */
+// Fixed palette — this screen is always black (image-overlay UI), so it must
+// not derive colors from the system light/dark theme. In dark mode the theme
+// tint is `#fff`, which paired with white button text produces an invisible
+// white-on-white glitch.
+const SELECTION_YELLOW = '#FFEB3B';
+const SCAN_BTN_TEXT_DARK = '#000';
+
 export default function FocusScreen() {
   const router = useRouter();
   const { uri } = useLocalSearchParams<{ uri: string }>();
-  const colorScheme = useColorScheme() ?? 'light';
-  const tint = Colors[colorScheme].tint;
   const insets = useSafeAreaInsets();
 
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
@@ -133,10 +136,11 @@ export default function FocusScreen() {
     setContainerSize({ width, height });
   };
 
-  const runPipeline = async (sourceUri: string) => {
+  const runPipelineWithRegion = async (region: BBox | null) => {
+    if (!uri) return;
     setProcessing(true);
     try {
-      const outcome = await processPhoto(sourceUri);
+      const outcome = await processPhoto(uri, { focusRegion: region });
       router.replace(`/scan/${outcome.photoId}`);
     } catch (e) {
       Alert.alert('Could not analyze photo', e instanceof Error ? e.message : String(e));
@@ -146,23 +150,23 @@ export default function FocusScreen() {
 
   const onScanWhole = () => {
     if (!uri || processing) return;
-    runPipeline(uri);
+    runPipelineWithRegion(null);
   };
 
-  const onScanSelection = async () => {
+  const onScanSelection = () => {
     if (!uri || processing || !lockedRect) return;
-    if (imageRect.w <= 0 || imageRect.h <= 0 || imageSize.width <= 0 || imageSize.height <= 0) {
+    if (imageRect.w <= 0 || imageRect.h <= 0) {
       onScanWhole();
       return;
     }
 
-    const cropRaw = containerSelectionToImageCrop(lockedRect, imageRect, imageSize);
-    if (!cropRaw) {
+    const region = containerSelectionToNormalizedRegion(lockedRect, imageRect);
+    if (!region) {
       onScanWhole();
       return;
     }
-    const cropPadded = padCropRect(cropRaw, CROP_PADDING_FRAC, imageSize);
-    if (!isViableCrop(cropPadded, MIN_CROP_DIMENSION_PX)) {
+    const [ymin, xmin, ymax, xmax] = region;
+    if (ymax - ymin < MIN_REGION_DIMENSION || xmax - xmin < MIN_REGION_DIMENSION) {
       Alert.alert(
         'Selection too small',
         'Try drawing a larger rectangle, or tap "Scan whole image".',
@@ -170,26 +174,15 @@ export default function FocusScreen() {
       return;
     }
 
-    setProcessing(true);
-    try {
-      const cropped = await manipulateAsync(
-        uri,
-        [{ crop: cropPadded }],
-        { compress: 1, format: SaveFormat.JPEG },
-      );
-      await runPipeline(cropped.uri);
-    } catch (e) {
-      Alert.alert('Crop failed', e instanceof Error ? e.message : String(e));
-      setProcessing(false);
-    }
+    runPipelineWithRegion(region);
   };
 
   if (!uri) {
     return (
       <View style={styles.center}>
-        <ThemedText>Missing image.</ThemedText>
-        <Pressable onPress={() => router.back()} style={[styles.secondaryBtn, { borderColor: tint }]}>
-          <ThemedText style={{ color: tint, fontWeight: '600' }}>Close</ThemedText>
+        <ThemedText style={styles.errorText}>Missing image.</ThemedText>
+        <Pressable onPress={() => router.back()} style={styles.secondaryBtn}>
+          <ThemedText style={styles.secondaryBtnText}>Close</ThemedText>
         </Pressable>
       </View>
     );
@@ -261,23 +254,15 @@ export default function FocusScreen() {
             accessibilityLabel="Scan whole image"
             onPress={onScanWhole}
             disabled={processing}
-            style={[
-              styles.secondaryBtn,
-              { borderColor: tint },
-              processing && styles.btnDisabled,
-            ]}>
-            <ThemedText style={{ color: tint, fontWeight: '600' }}>Scan whole image</ThemedText>
+            style={[styles.secondaryBtn, processing && styles.btnDisabled]}>
+            <ThemedText style={styles.secondaryBtnText}>Scan whole image</ThemedText>
           </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Scan selected region"
             onPress={onScanSelection}
             disabled={processing || !lockedRect}
-            style={[
-              styles.primaryBtn,
-              { backgroundColor: tint },
-              (processing || !lockedRect) && styles.btnDisabled,
-            ]}>
+            style={[styles.primaryBtn, (processing || !lockedRect) && styles.btnDisabled]}>
             <ThemedText style={styles.primaryBtnText}>Scan selection</ThemedText>
           </Pressable>
         </View>
@@ -338,15 +323,26 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 10,
     borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)',
     alignItems: 'center',
   },
+  secondaryBtnText: { color: 'white', fontWeight: '600' },
   primaryBtn: {
     flex: 1,
     paddingVertical: 12,
     borderRadius: 10,
+    backgroundColor: SELECTION_YELLOW,
     alignItems: 'center',
   },
-  primaryBtnText: { color: 'white', fontWeight: '600' },
+  primaryBtnText: { color: SCAN_BTN_TEXT_DARK, fontWeight: '600' },
   btnDisabled: { opacity: 0.4 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    gap: 12,
+    backgroundColor: 'black',
+  },
+  errorText: { color: 'white' },
 });

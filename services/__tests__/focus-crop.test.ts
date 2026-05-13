@@ -1,5 +1,6 @@
 import {
   containerSelectionToImageCrop,
+  containerSelectionToNormalizedRegion,
   isViableCrop,
   padCropRect,
 } from '../focus-crop';
@@ -127,5 +128,70 @@ describe('isViableCrop', () => {
   it('rejects rects below the minimum in either dimension', () => {
     expect(isViableCrop({ originX: 0, originY: 0, width: 79, height: 200 }, 80)).toBe(false);
     expect(isViableCrop({ originX: 0, originY: 0, width: 200, height: 50 }, 80)).toBe(false);
+  });
+});
+
+describe('containerSelectionToNormalizedRegion', () => {
+  const imageRect = { x: 0, y: 0, w: 400, h: 400 };
+
+  it('maps a centered half-size selection to the middle 50% of [0,1000]', () => {
+    const region = containerSelectionToNormalizedRegion(
+      { left: 100, top: 100, width: 200, height: 200 },
+      imageRect,
+    );
+    // ymin=xmin=250, ymax=xmax=750 — Gemini format is [ymin, xmin, ymax, xmax].
+    expect(region).toEqual([250, 250, 750, 750]);
+  });
+
+  it('subtracts the image-rect offset when the image is letterboxed', () => {
+    // Letterboxed 50px from the top, image rect 400x300.
+    const lb = { x: 0, y: 50, w: 400, h: 300 };
+    const region = containerSelectionToNormalizedRegion(
+      { left: 0, top: 50, width: 400, height: 300 },
+      lb,
+    );
+    expect(region).toEqual([0, 0, 1000, 1000]);
+  });
+
+  it('clamps a selection that overflows the image rect', () => {
+    const region = containerSelectionToNormalizedRegion(
+      { left: -50, top: -50, width: 200, height: 200 },
+      imageRect,
+    );
+    // Clamped selection is 0..150 in container coords = 0..375 normalized.
+    expect(region).toEqual([0, 0, 375, 375]);
+  });
+
+  it('returns null when selection has no overlap with the image rect', () => {
+    const lb = { x: 0, y: 100, w: 400, h: 200 };
+    expect(
+      containerSelectionToNormalizedRegion(
+        { left: 0, top: 0, width: 100, height: 50 },
+        lb,
+      ),
+    ).toBeNull();
+  });
+
+  it('returns null when the image rect is unmeasured', () => {
+    expect(
+      containerSelectionToNormalizedRegion(
+        { left: 0, top: 0, width: 100, height: 100 },
+        { x: 0, y: 0, w: 0, h: 100 },
+      ),
+    ).toBeNull();
+  });
+
+  it('rounds and clamps results into the documented [0, 1000] range', () => {
+    // Half-pixel placement should round to integers, not leak fractional values.
+    const region = containerSelectionToNormalizedRegion(
+      { left: 100.4, top: 200.6, width: 50, height: 50 },
+      { x: 0, y: 0, w: 333, h: 333 },
+    );
+    expect(region).not.toBeNull();
+    region!.forEach((n) => {
+      expect(Number.isInteger(n)).toBe(true);
+      expect(n).toBeGreaterThanOrEqual(0);
+      expect(n).toBeLessThanOrEqual(1000);
+    });
   });
 });

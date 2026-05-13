@@ -4,7 +4,7 @@ import uuid from 'react-native-uuid';
 
 import { db } from '@/db/client';
 import { cards, cardSightings, photos, type NewCard, type NewCardSighting } from '@/db/schema';
-import type { WordAnalysis } from '@/lib/types';
+import type { BBox, WordAnalysis } from '@/lib/types';
 import { filterOutIgnored } from './ignored';
 import { dedupeByLemma } from './pipeline-helpers';
 import { emptyState } from './scheduler';
@@ -36,11 +36,14 @@ export type ScanOutcome = {
   }>;
 };
 
-export async function processPhoto(imageUri: string): Promise<ScanOutcome> {
+export async function processPhoto(
+  imageUri: string,
+  opts?: { focusRegion?: BBox | null },
+): Promise<ScanOutcome> {
   const photoId = id();
   const now = Date.now();
 
-  const visionResult = await analyzeImage(imageUri);
+  const visionResult = await analyzeImage(imageUri, { focusRegion: opts?.focusRegion ?? null });
   const analyzed = visionResult.words;
   const rawText = visionResult.rawText;
   const category = visionResult.category;

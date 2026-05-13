@@ -1,16 +1,20 @@
+import type { BBox } from '@/lib/types';
+
 /**
  * Pure helpers for converting a user-drawn selection on a `contentFit="contain"`
- * image into a crop rect in the source image's natural pixel coordinates.
+ * image into either:
+ *   - a crop rect in the source image's natural pixel coordinates
+ *     (`containerSelectionToImageCrop`), or
+ *   - a Gemini-format normalized bbox `[ymin, xmin, ymax, xmax]` in 0–1000
+ *     space (`containerSelectionToNormalizedRegion`).
  *
  * The drawing UI works in *container* coordinates (the View around the Image).
  * The image is drawn into a sub-rect of that container (letterboxed when the
  * aspect ratios don't match — see `containRect` in services/bbox.ts). The
- * cropper (`expo-image-manipulator`) operates on the *file's* pixel grid, which
- * is the natural image size. So the conversion is two steps:
- *
- *   1. Clamp the selection to the rendered image rect (the user can drag
- *      outside the image into the letterbox; those pixels don't exist).
- *   2. Translate + scale into natural pixel coordinates.
+ * cropper (`expo-image-manipulator`) operates on the *file's* pixel grid; the
+ * Gemini API uses normalized 0–1000 coords. Both conversions start the same
+ * way: clamp the selection to the rendered image rect (the user can drag
+ * outside the image into the letterbox; those pixels don't exist).
  */
 
 export type SelectionRect = { left: number; top: number; width: number; height: number };
@@ -84,4 +88,35 @@ export function padCropRect(rect: CropRect, paddingFrac: number, bounds: Size): 
  */
 export function isViableCrop(rect: CropRect, minDimension: number): boolean {
   return rect.width >= minDimension && rect.height >= minDimension;
+}
+
+/**
+ * Convert a container-coords selection into a Gemini-format normalized bbox
+ * `[ymin, xmin, ymax, xmax]` in 0–1000 space, relative to the rendered image
+ * rect (i.e. the natural image's coordinate space, NOT the container's).
+ *
+ * Returns `null` if the selection has zero overlap with the image rect — the
+ * caller should fall back to "scan whole image" in that case.
+ */
+export function containerSelectionToNormalizedRegion(
+  selection: SelectionRect,
+  imageRect: ImageRect,
+): BBox | null {
+  if (imageRect.w <= 0 || imageRect.h <= 0) return null;
+
+  const left = Math.max(imageRect.x, selection.left);
+  const top = Math.max(imageRect.y, selection.top);
+  const right = Math.min(imageRect.x + imageRect.w, selection.left + selection.width);
+  const bottom = Math.min(imageRect.y + imageRect.h, selection.top + selection.height);
+
+  if (right <= left || bottom <= top) return null;
+
+  const clamp = (n: number) => Math.max(0, Math.min(1000, Math.round(n)));
+  const xmin = clamp(((left - imageRect.x) / imageRect.w) * 1000);
+  const ymin = clamp(((top - imageRect.y) / imageRect.h) * 1000);
+  const xmax = clamp(((right - imageRect.x) / imageRect.w) * 1000);
+  const ymax = clamp(((bottom - imageRect.y) / imageRect.h) * 1000);
+
+  if (xmax <= xmin || ymax <= ymin) return null;
+  return [ymin, xmin, ymax, xmax];
 }
