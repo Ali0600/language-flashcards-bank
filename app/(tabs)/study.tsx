@@ -101,9 +101,10 @@ export default function StudyScreen() {
   const card = queue[index];
   if (!card) return null;
 
-  const isReverse = card.direction === 'en_to_de';
-  const frontWord = isReverse ? (card.translationEn ?? card.lemma) : card.lemma;
-  const backWord = isReverse ? card.lemma : (card.translationEn ?? '');
+  // Always show the English translation on the front. German lemma (+ gender,
+  // example, etc.) is the answer revealed on the back — this is the harder,
+  // production-recall direction and the one the user prefers studying.
+  const frontWord = card.translationEn ?? card.lemma;
 
   const onRate = async (rating: ReviewRating) => {
     if (submitting) return;
@@ -141,31 +142,25 @@ export default function StudyScreen() {
       <Pressable
         style={[styles.card, { borderColor: tint }]}
         onPress={() => setRevealed((r) => !r)}>
-        <ThemedText style={styles.directionBadge}>
-          {isReverse ? 'EN → DE' : 'DE → EN'}
-        </ThemedText>
-        {!isReverse && card.gender && (
-          <ThemedText style={styles.gender}>{card.gender}</ThemedText>
-        )}
         <ThemedText type="title" style={styles.lemma}>
           {frontWord}
         </ThemedText>
         {revealed ? (
           <View style={styles.back}>
-            {isReverse && card.gender && (
-              <ThemedText style={styles.gender}>{card.gender}</ThemedText>
+            <View style={styles.lemmaRow}>
+              {card.gender && <ThemedText style={styles.gender}>{card.gender}</ThemedText>}
+              <ThemedText type="subtitle" style={styles.germanAnswer}>
+                {card.lemma}
+              </ThemedText>
+            </View>
+            {card.plural && (
+              <ThemedText style={styles.plural}>plural: {card.plural}</ThemedText>
             )}
-            <ThemedText type="subtitle" style={styles.translation}>
-              {backWord}
-            </ThemedText>
             {card.exampleDe && (
               <ThemedText style={styles.example}>{card.exampleDe}</ThemedText>
             )}
             {card.exampleEn && (
               <ThemedText style={styles.exampleEn}>{card.exampleEn}</ThemedText>
-            )}
-            {card.plural && (
-              <ThemedText style={styles.plural}>plural: {card.plural}</ThemedText>
             )}
             {card.notes && (
               <ThemedText style={styles.notes}>{card.notes}</ThemedText>
@@ -293,15 +288,8 @@ const styles = StyleSheet.create({
     lineHeight: 52,
     textAlign: 'center',
   },
-  directionBadge: {
-    position: 'absolute',
-    top: 12,
-    right: 14,
-    fontSize: 10,
-    opacity: 0.45,
-    letterSpacing: 1,
-    fontWeight: '600',
-  },
+  lemmaRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  germanAnswer: { fontSize: 28, lineHeight: 36, textAlign: 'center' },
   tapHint: {
     opacity: 0.5,
     marginTop: 24,
