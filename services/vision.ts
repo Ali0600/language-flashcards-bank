@@ -115,7 +115,11 @@ async function callGemini(base64: string): Promise<string | undefined> {
   const ai = new GoogleGenAI({ apiKey });
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
 
   try {
     const response = await ai.models.generateContent({
@@ -138,6 +142,13 @@ async function callGemini(base64: string): Promise<string | undefined> {
       },
     });
     return response.text;
+  } catch (err) {
+    // Distinguish our own timeout from any other abort (network reset, app
+    // backgrounded, etc.) so the user-facing alert tells them which.
+    if (timedOut) {
+      throw new Error(`Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`);
+    }
+    throw err;
   } finally {
     clearTimeout(timer);
   }
