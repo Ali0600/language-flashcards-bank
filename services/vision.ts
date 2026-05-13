@@ -6,7 +6,7 @@ import { assertGeminiKey } from '@/lib/env';
 import type { BBox, WordAnalysis } from '@/lib/types';
 
 const MODEL = 'gemini-2.5-flash';
-const REQUEST_TIMEOUT_MS = 30_000;
+const REQUEST_TIMEOUT_MS = 60_000;
 const MAX_IMAGE_DIMENSION = 1600;
 
 const wordSchema = {
