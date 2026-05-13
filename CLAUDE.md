@@ -30,7 +30,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `cards` — id, lemma, gender (der/die/das/null), pos, translationEn, exampleDe, exampleEn, plural, notes, **direction** (`de_to_en` | `en_to_de`), plus flat FSRS state columns (due, stability, difficulty, reps, lapses, state, lastReview, learningSteps, elapsedDays, scheduledDays). **Unique constraint is compound on `(lemma, direction)`** so a forward and reverse card can coexist for the same lemma. Library/Folders/frequency queries filter to `direction='de_to_en'` so reverses don't double-count.
 - `card_sightings` — id, cardId, photoId, surfaceForm, seenAt, **bbox** (JSON-encoded `[ymin, xmin, ymax, xmax]` normalized to 0–1000, nullable for legacy). Sightings only attach to the forward (DE→EN) card.
 - `review_logs` — id, cardId, rating, reviewedAt, plus FSRS snapshot fields for audit.
-- `settings` — key/value/updatedAt, JSON-serialized values. Keys: `dailyNewCardLimit`, `playInSilentMode`, `autoCreateReverseCards`, `focusRegionBeforeScan`.
+- `settings` — key/value/updatedAt, JSON-serialized values. Keys: `dailyNewCardLimit`, `playInSilentMode`, `autoCreateReverseCards`.
 - `ignored_words` — `lemma TEXT PRIMARY KEY COLLATE NOCASE`, `addedAt`. Pipeline filters Gemini's output against this table before any cards/sightings get persisted.
 
 **Frequency-suggestion query** (Library "by Frequency" sort + future Study suggested-next rail):
@@ -46,13 +46,13 @@ GROUP BY c.id ORDER BY freq DESC;
 - `app/(tabs)/index.tsx` — **Library tab.** Cards / Folders view-mode toggle, search, sort chips (frequency / A–Z / due), folder-filter chip (ActionSheetIOS picker), pull-to-refresh, gear icon → `/settings`.
 - `app/(tabs)/study.tsx` — Due-cards study. **Front shows English translation, tap reveals German lemma + gender + example DE/EN + notes + Listen button.** Queue is snapshotted locally on first load so mid-session tab-switches don't shuffle it. "Start over" calls `refetch()` to pull a fresh queue. Direction-aware: forward cards (`de_to_en`) and reverse siblings (`en_to_de`) both render with EN on front, DE on back.
 - `app/(tabs)/stats.tsx` — Card-state breakdown, totals, top-frequency lemmas, 12-week activity heatmap + current/longest streak, CSV export button.
-- `app/(tabs)/capture.tsx` — `CameraView` (paused during processing) + photo-library picker. When the `focusRegionBeforeScan` setting is on, the captured/picked URI is routed to `/focus` instead of being sent straight to the pipeline.
-- `app/focus.tsx` — Modal preview after capture/library pick (only used when `focusRegionBeforeScan` is on). Drag a rectangle on the photo, then choose **Scan selection** (crops with ~5% padding via `expo-image-manipulator` → pipeline) or **Scan whole image** (pipeline on the original). Sub-80px crops are rejected with an alert.
+- `app/(tabs)/capture.tsx` — `CameraView` + photo-library picker. Always routes the captured/picked URI to `/focus`; pipeline processing itself happens on the Focus screen.
+- `app/focus.tsx` — Modal preview after every capture/library pick. Drag a rectangle on the photo, then choose **Scan selection** (crops with ~5% padding via `expo-image-manipulator` → pipeline) or **Scan whole image** (pipeline on the original). Sub-80px crops are rejected with an alert.
 - `app/scan/[id].tsx` — Post-capture results: per-word checkbox (default checked), uncheck words to remove from this scan; Done shows a batched alert offering [Just remove from scan / Add to ignore list / Cancel]. Each removed sighting cascades to delete its card if no other sightings exist.
 - `app/card/[id].tsx` — Card detail with edit/delete, sighting list, listen button, notes/mnemonic field, direction badge, sibling-direction FSRS state if a reverse exists, "Create reverse" button when missing.
 - `app/folder/[slug].tsx` — Cards belonging to a single folder category.
 - `app/photo/[id].tsx` — Full-screen photo viewer (modal). Folder chip for recategorization (ActionSheetIOS) + tappable bounding-box overlays per detected word → tap navigates to the card.
-- `app/settings.tsx` — Daily new-card limit stepper, silent-mode toggle, focus-region-before-scanning toggle, auto-create-reverse-cards toggle, bulk-backfill-reverses button, link to ignored-words screen.
+- `app/settings.tsx` — Daily new-card limit stepper, silent-mode toggle, auto-create-reverse-cards toggle, bulk-backfill-reverses button, link to ignored-words screen.
 - `app/ignored.tsx` — Modal-presented list of ignored lemmas with per-row Remove buttons. Reached from Settings.
 
 **Route registration:** new screens must be added to the `<Stack>` in `app/_layout.tsx`. Expo Router's typed routes don't pick up new files until `npx expo start` regenerates `.expo/types` — until then, cast as `'/route' as never` when calling `router.push`. Existing examples: `/settings`, `/folder/[slug]`, `/ignored`, `/focus`.
@@ -81,7 +81,7 @@ GROUP BY c.id ORDER BY freq DESC;
 - `use-folders.ts` — `useFolders` (count by category), `useFolderCards(slug)`.
 - `use-stats.ts` — `useStats` for the Stats tab (includes 84-day heatmap + streak counters).
 - `use-scan.ts` — Joins photos × sightings × cards for the scan results screen.
-- `use-settings.ts` — `useDailyNewCardLimit`, `usePlayInSilentMode`, `useAutoCreateReverseCards`, `useFocusRegionBeforeScan`. Boolean settings share `useBooleanSetting` internally — when adding another boolean setting, use that helper rather than copy-pasting the focus-effect dance.
+- `use-settings.ts` — `useDailyNewCardLimit`, `usePlayInSilentMode`, `useAutoCreateReverseCards`. Boolean settings share `useBooleanSetting` internally — when adding another boolean setting, use that helper rather than copy-pasting the focus-effect dance.
 - `use-ignored.ts` — `useIgnoredWords()` for the ignore-list management screen.
 
 **State:** No global state library. Drizzle queries are the source of truth; hooks reload via `useFocusEffect`. Card sightings (for frequency) are computed by an extra SELECT — fine at our scale, swap to a window function or denormalized counter later if needed.

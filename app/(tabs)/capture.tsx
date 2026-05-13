@@ -9,8 +9,6 @@ import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useFocusRegionBeforeScan } from '@/hooks/use-settings';
-import { processPhoto } from '@/services/pipeline';
 
 export default function CaptureScreen() {
   const router = useRouter();
@@ -19,51 +17,43 @@ export default function CaptureScreen() {
 
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
-  const [processing, setProcessing] = useState(false);
-  const [processingMessage, setProcessingMessage] = useState('Analyzing photo…');
-  const { enabled: focusBeforeScan } = useFocusRegionBeforeScan();
+  // `busy` is only held during the brief async window between taking/picking a
+  // photo and pushing the Focus route. Pipeline processing happens on the
+  // Focus screen.
+  const [busy, setBusy] = useState(false);
 
-  const handleCapturedUri = async (uri: string) => {
-    if (focusBeforeScan) {
-      // Hand off to the focus screen, which crops then calls processPhoto itself.
-      router.push(`/focus?uri=${encodeURIComponent(uri)}` as never);
-      return;
-    }
-    setProcessing(true);
-    setProcessingMessage('Analyzing photo…');
-    try {
-      const outcome = await processPhoto(uri);
-      router.push(`/scan/${outcome.photoId}`);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      Alert.alert('Could not analyze photo', message);
-    } finally {
-      setProcessing(false);
-    }
+  const openFocus = (uri: string) => {
+    router.push(`/focus?uri=${encodeURIComponent(uri)}` as never);
   };
 
   const onShutter = async () => {
-    if (!cameraRef.current || processing) return;
+    if (!cameraRef.current || busy) return;
+    setBusy(true);
     try {
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.7,
         skipProcessing: false,
       });
-      if (photo?.uri) await handleCapturedUri(photo.uri);
+      if (photo?.uri) openFocus(photo.uri);
     } catch (e) {
       Alert.alert('Capture failed', e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
     }
   };
 
   const onPick = async () => {
-    if (processing) return;
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.7,
-    });
-    const uri = result.canceled ? null : result.assets[0]?.uri;
-    if (uri) {
-      await handleCapturedUri(uri);
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.7,
+      });
+      const uri = result.canceled ? null : result.assets[0]?.uri;
+      if (uri) openFocus(uri);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -97,30 +87,24 @@ export default function CaptureScreen() {
 
   return (
     <View style={styles.container}>
-      <CameraView ref={cameraRef} style={styles.camera} facing="back" active={!processing} />
+      <CameraView ref={cameraRef} style={styles.camera} facing="back" active={!busy} />
       <View style={styles.controls}>
         <Pressable
           accessibilityRole="button"
           style={styles.libraryBtn}
           onPress={onPick}
-          disabled={processing}>
+          disabled={busy}>
           <IconSymbol name="photo.fill" size={28} color="white" />
         </Pressable>
         <Pressable
           accessibilityRole="button"
-          style={[styles.shutter, processing && styles.shutterDisabled]}
+          style={[styles.shutter, busy && styles.shutterDisabled]}
           onPress={onShutter}
-          disabled={processing}>
+          disabled={busy}>
           <View style={styles.shutterInner} />
         </Pressable>
         <View style={styles.controlsSpacer} />
       </View>
-      {processing && (
-        <View style={styles.processingOverlay}>
-          <ActivityIndicator size="large" color="white" />
-          <ThemedText style={styles.processingText}>{processingMessage}</ThemedText>
-        </View>
-      )}
     </View>
   );
 }
@@ -174,12 +158,4 @@ const styles = StyleSheet.create({
     borderRadius: 31,
     backgroundColor: 'white',
   },
-  processingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-  },
-  processingText: { color: 'white', fontSize: 16 },
 });

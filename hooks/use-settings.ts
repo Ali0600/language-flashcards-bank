@@ -85,10 +85,3 @@ export function useAutoCreateReverseCards() {
     DEFAULT_SETTINGS.autoCreateReverseCards,
   );
 }
-
-export function useFocusRegionBeforeScan() {
-  return useBooleanSetting(
-    SettingKeys.focusRegionBeforeScan,
-    DEFAULT_SETTINGS.focusRegionBeforeScan,
-  );
-}
