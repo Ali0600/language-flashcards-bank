@@ -60,50 +60,65 @@ export default function FocusScreen() {
     return lockedRect;
   }, [dragStart, dragCurrent, lockedRect]);
 
-  // PanResponder must be stable across renders. Store mutable values in a ref
-  // so the responder callbacks can read fresh state.
+  // PanResponder must be stable across renders. Store mutable values in refs
+  // so the responder callbacks can read fresh state without re-creating the
+  // responder. `gestureState.{x0,y0,moveX,moveY}` are *page* coordinates
+  // (relative to the screen) — we need coordinates local to the image
+  // container, so we read `event.nativeEvent.locationX/locationY` instead,
+  // which is local to the responder view.
   const stateRef = useRef({ imageRect, processing });
   stateRef.current = { imageRect, processing };
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const dragCurrentRef = useRef<{ x: number; y: number } | null>(null);
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => !stateRef.current.processing,
         onMoveShouldSetPanResponder: () => !stateRef.current.processing,
-        onPanResponderGrant: (_, gesture) => {
+        onPanResponderGrant: (event) => {
           const rect = stateRef.current.imageRect;
           if (rect.w <= 0 || rect.h <= 0) return;
-          const x = clamp(gesture.x0, rect.x, rect.x + rect.w);
-          const y = clamp(gesture.y0, rect.y, rect.y + rect.h);
+          const { locationX, locationY } = event.nativeEvent;
+          if (!Number.isFinite(locationX) || !Number.isFinite(locationY)) return;
+          const x = clamp(locationX, rect.x, rect.x + rect.w);
+          const y = clamp(locationY, rect.y, rect.y + rect.h);
+          dragStartRef.current = { x, y };
+          dragCurrentRef.current = { x, y };
           setLockedRect(null);
           setDragStart({ x, y });
           setDragCurrent({ x, y });
         },
-        onPanResponderMove: (_, gesture) => {
+        onPanResponderMove: (event) => {
           const rect = stateRef.current.imageRect;
           if (rect.w <= 0 || rect.h <= 0) return;
-          const x = clamp(gesture.moveX, rect.x, rect.x + rect.w);
-          const y = clamp(gesture.moveY, rect.y, rect.y + rect.h);
+          const { locationX, locationY } = event.nativeEvent;
+          if (!Number.isFinite(locationX) || !Number.isFinite(locationY)) return;
+          const x = clamp(locationX, rect.x, rect.x + rect.w);
+          const y = clamp(locationY, rect.y, rect.y + rect.h);
+          dragCurrentRef.current = { x, y };
           setDragCurrent({ x, y });
         },
         onPanResponderRelease: () => {
-          setDragStart((start) => {
-            setDragCurrent((current) => {
-              if (start && current) {
-                const norm = normalizeRect(start, current);
-                // Ignore taps / micro-drags (treat as "clear selection").
-                if (norm.width >= 8 && norm.height >= 8) {
-                  setLockedRect(norm);
-                } else {
-                  setLockedRect(null);
-                }
-              }
-              return null;
-            });
-            return null;
-          });
+          const start = dragStartRef.current;
+          const current = dragCurrentRef.current;
+          if (start && current) {
+            const norm = normalizeRect(start, current);
+            // Ignore taps / micro-drags (treat as "clear selection").
+            if (norm.width >= 8 && norm.height >= 8) {
+              setLockedRect(norm);
+            } else {
+              setLockedRect(null);
+            }
+          }
+          dragStartRef.current = null;
+          dragCurrentRef.current = null;
+          setDragStart(null);
+          setDragCurrent(null);
         },
         onPanResponderTerminate: () => {
+          dragStartRef.current = null;
+          dragCurrentRef.current = null;
           setDragStart(null);
           setDragCurrent(null);
         },
