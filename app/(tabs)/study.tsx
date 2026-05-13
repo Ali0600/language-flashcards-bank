@@ -156,6 +156,9 @@ export default function StudyScreen() {
             {card.exampleDe && (
               <ThemedText style={styles.example}>{card.exampleDe}</ThemedText>
             )}
+            {card.exampleEn && (
+              <ThemedText style={styles.exampleEn}>{card.exampleEn}</ThemedText>
+            )}
             {card.notes && (
               <ThemedText style={styles.notes}>{card.notes}</ThemedText>
             )}
@@ -304,6 +307,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
     marginTop: 12,
+  },
+  exampleEn: {
+    textAlign: 'center',
+    opacity: 0.6,
   },
   plural: {
     opacity: 0.6,
