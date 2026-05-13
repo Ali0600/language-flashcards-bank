@@ -79,10 +79,6 @@ export function usePlayInSilentMode() {
   return useBooleanSetting(SettingKeys.playInSilentMode, DEFAULT_SETTINGS.playInSilentMode);
 }
 
-export function useStudyClozeMode() {
-  return useBooleanSetting(SettingKeys.studyClozeMode, DEFAULT_SETTINGS.studyClozeMode);
-}
-
 export function useAutoCreateReverseCards() {
   return useBooleanSetting(
     SettingKeys.autoCreateReverseCards,
