@@ -122,7 +122,13 @@ export default function RootLayout() {
         />
         <Stack.Screen
           name="focus"
-          options={{ presentation: 'modal', headerShown: true, title: 'Focus region' }}
+          options={{
+            // fullScreenModal disables iOS's swipe-down-to-dismiss gesture,
+            // which otherwise eats diagonal drags inside the focus screen.
+            presentation: 'fullScreenModal',
+            headerShown: false,
+            gestureEnabled: false,
+          }}
         />
       </Stack>
       <StatusBar style="auto" />

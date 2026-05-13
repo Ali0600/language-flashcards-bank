@@ -11,6 +11,7 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { Colors } from '@/constants/theme';
@@ -39,6 +40,7 @@ export default function FocusScreen() {
   const { uri } = useLocalSearchParams<{ uri: string }>();
   const colorScheme = useColorScheme() ?? 'light';
   const tint = Colors[colorScheme].tint;
+  const insets = useSafeAreaInsets();
 
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
@@ -195,6 +197,21 @@ export default function FocusScreen() {
 
   return (
     <View style={styles.container}>
+      <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
+        <Pressable
+          onPress={() => router.back()}
+          disabled={processing}
+          accessibilityRole="button"
+          accessibilityLabel="Cancel"
+          style={styles.topBarBtn}
+          hitSlop={12}>
+          <ThemedText style={[styles.topBarBtnText, processing && styles.btnDisabled]}>
+            Cancel
+          </ThemedText>
+        </Pressable>
+        <ThemedText style={styles.topBarTitle}>Focus region</ThemedText>
+        <View style={styles.topBarBtn} />
+      </View>
       <View
         style={styles.imageContainer}
         onLayout={onContainerLayout}
@@ -286,6 +303,17 @@ function normalizeRect(
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'black' },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    backgroundColor: 'black',
+  },
+  topBarBtn: { minWidth: 60 },
+  topBarBtnText: { color: 'white', fontSize: 16, fontWeight: '500' },
+  topBarTitle: { color: 'white', fontSize: 17, fontWeight: '600' },
   imageContainer: { flex: 1, position: 'relative' },
   image: { ...StyleSheet.absoluteFillObject },
   selectionBox: {
@@ -302,7 +330,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   processingText: { color: 'white', fontSize: 16 },
-  footer: { padding: 16, gap: 12, backgroundColor: 'black' },
+  footer: { padding: 16, paddingBottom: 32, gap: 12, backgroundColor: 'black' },
   hint: { color: 'rgba(255,255,255,0.75)', fontSize: 13, lineHeight: 18 },
   actions: { flexDirection: 'row', gap: 12 },
   secondaryBtn: {
