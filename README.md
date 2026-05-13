@@ -9,14 +9,19 @@ iOS app built with React Native + Expo. Snap a picture of food packaging, a post
 ## Features
 
 - **Photo capture pipeline.** Camera + photo-library picker → Gemini 2.5 Flash → structured JSON of words → deduped flashcards. All in one tap.
-- **Auto-categorized folders.** Each photo is classified into one of 11 scene categories (food packaging, cooking, household, signs, transport, health, documents, clothing, electronics, outdoor, other). The Library tab can group cards by folder so you can browse "everything I saw on a recipe card."
+- **Per-word checklist on Scan Results.** Uncheck words you don't want as flashcards. Optionally add the unchecked lemmas to a persistent **Ignore List** so future captures skip them automatically. Manage the list from Settings.
+- **Tappable bounding boxes on photos.** The photo viewer overlays a box around each detected word (Gemini Vision returns the coordinates) — tap a box to jump straight to that card.
+- **Auto-categorized folders, with recategorize.** Each photo is classified into one of 11 scene categories (food packaging, cooking, household, signs, transport, health, documents, clothing, electronics, outdoor, other). Misclassified? Open the photo and pick a different folder. Library tab can group cards by folder or filter the flat Cards view by folder.
 - **FSRS-6 spaced repetition.** Real algorithm via [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs), not a homegrown SM-2.
+- **Production-recall study direction.** Front shows the English translation; tap reveals the German lemma + gender + example sentences. The harder, more effective direction by default.
+- **Reverse cards (EN → DE) — optional.** Toggle in Settings to auto-create an `en_to_de` sibling for every new card, or bulk-backfill all existing cards. Each direction has its own independent FSRS state.
+- **Notes / mnemonics per card.** Free-text field on the card detail screen, surfaced on the study back.
 - **Frequency-weighted new cards.** When new cards drip into your study queue, the ones you've actually seen most often in photos come first.
 - **Daily new-card limit.** Tunable in Settings (default 10/day) so a single 30-word photo doesn't bury you.
 - **German pronunciation.** Tap to hear the word and an example sentence via iOS's native speech synthesizer. Plays through the silent switch by default (toggleable in Settings).
 - **Pull-to-refresh** everywhere it makes sense.
 - **CSV export** of every card with sighting counts and FSRS state — shareable via the iOS share sheet.
-- **Stats.** Card counts by state (New / Learning / Review / Relearning), total reviews, reviews today, photos taken, most-sighted lemmas.
+- **Stats.** Card counts by state (New / Learning / Review / Relearning), total reviews, reviews today, photos taken, most-sighted lemmas, plus a 12-week GitHub-style activity heatmap with current/longest streak counters.
 - **Card editing.** Fix a misclassification from Gemini directly in the card detail screen.
 - **Dark mode.**
 
@@ -71,10 +76,11 @@ iOS app built with React Native + Expo. Snap a picture of food packaging, a post
 ### Data model (Drizzle, see [db/schema.ts](db/schema.ts))
 
 - `photos` — id, taken_at, image_uri (local), raw_ocr_text, category (one of 11 fixed slugs)
-- `cards` — id, **lemma (unique)**, gender, pos, translation, example, plural, plus flat FSRS state columns
-- `card_sightings` — one row per word-in-photo (cardId, photoId, surfaceForm, seenAt)
+- `cards` — id, lemma, gender, pos, translation, example DE/EN, plural, notes, **direction** (`de_to_en` | `en_to_de`), plus flat FSRS state columns. Compound unique on `(lemma, direction)` so a forward and reverse can coexist
+- `card_sightings` — one row per word-in-photo (cardId, photoId, surfaceForm, seenAt, **bbox** — JSON `[ymin, xmin, ymax, xmax]` normalized 0–1000, nullable)
 - `review_logs` — full FSRS audit trail per rating
-- `settings` — JSON-serialized key/value store for `dailyNewCardLimit`, `playInSilentMode`
+- `settings` — JSON-serialized key/value store for `dailyNewCardLimit`, `playInSilentMode`, `autoCreateReverseCards`
+- `ignored_words` — lemmas the user has chosen to skip in future scans (case-insensitive primary key via `COLLATE NOCASE`)
 
 A card's frequency score is just `COUNT(*)` over its sightings — computed at query time, not denormalized.
 
@@ -83,15 +89,16 @@ A card's frequency score is just `COUNT(*)` over its sightings — computed at q
 ```
 app/_layout.tsx          → root layout (migrations, seed, splash, audio mode, OTA check)
 app/(tabs)/
-  index.tsx              → Library (Cards / Folders view modes)
-  study.tsx              → Study (with session queue snapshot)
-  stats.tsx              → Stats + CSV export
+  index.tsx              → Library (Cards / Folders view modes, folder filter)
+  study.tsx              → Study (EN front, DE on tap-to-reveal, session queue snapshot)
+  stats.tsx              → Stats + activity heatmap + streaks + CSV export
   capture.tsx            → Camera + photo library picker
-app/card/[id].tsx        → Card detail (with edit/delete)
+app/card/[id].tsx        → Card detail (edit/delete, notes, reverse-sibling state)
 app/folder/[slug].tsx    → Cards in a folder
-app/photo/[id].tsx       → Full-screen photo viewer (modal)
-app/scan/[id].tsx        → Post-capture results
-app/settings.tsx         → Daily-limit stepper + silent-mode toggle (modal)
+app/photo/[id].tsx       → Full-screen photo viewer (modal) with bbox overlays + recategorize
+app/scan/[id].tsx        → Post-capture results with per-word checkboxes
+app/settings.tsx         → Settings (modal)
+app/ignored.tsx          → Ignored words list (modal)
 ```
 
 ## Setup
@@ -171,10 +178,12 @@ Pure helpers live in single-purpose modules (`services/csv.ts`, `services/pipeli
 
 ```
 services/__tests__/
+  bbox.test.ts
   csv.test.ts
   pipeline-helpers.test.ts
   scheduler.test.ts
   stoplist.test.ts
+  streaks.test.ts
 constants/__tests__/
   folders.test.ts
 ```

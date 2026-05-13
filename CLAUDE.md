@@ -27,10 +27,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Data model (op-sqlite via Drizzle ORM, see [db/schema.ts](db/schema.ts)):**
 - `photos` — id, takenAt, imageUri, rawOcrText, category (one of 11 fixed folder slugs or null for legacy rows)
-- `cards` — id, **lemma (unique, dedup key)**, gender (der/die/das/null), pos, translationEn, exampleDe, exampleEn, plural, plus flat FSRS state columns (due, stability, difficulty, reps, lapses, state, lastReview, learningSteps, elapsedDays, scheduledDays)
-- `card_sightings` — id, cardId, photoId, surfaceForm, seenAt (one row per word-in-photo; `seen_count = COUNT(*)` derived)
-- `review_logs` — id, cardId, rating, reviewedAt, plus FSRS snapshot fields for audit
-- `settings` — key/value/updatedAt, JSON-serialized values; keys are `dailyNewCardLimit`, `playInSilentMode`
+- `cards` — id, lemma, gender (der/die/das/null), pos, translationEn, exampleDe, exampleEn, plural, notes, **direction** (`de_to_en` | `en_to_de`), plus flat FSRS state columns (due, stability, difficulty, reps, lapses, state, lastReview, learningSteps, elapsedDays, scheduledDays). **Unique constraint is compound on `(lemma, direction)`** so a forward and reverse card can coexist for the same lemma. Library/Folders/frequency queries filter to `direction='de_to_en'` so reverses don't double-count.
+- `card_sightings` — id, cardId, photoId, surfaceForm, seenAt, **bbox** (JSON-encoded `[ymin, xmin, ymax, xmax]` normalized to 0–1000, nullable for legacy). Sightings only attach to the forward (DE→EN) card.
+- `review_logs` — id, cardId, rating, reviewedAt, plus FSRS snapshot fields for audit.
+- `settings` — key/value/updatedAt, JSON-serialized values. Keys: `dailyNewCardLimit`, `playInSilentMode`, `autoCreateReverseCards`.
+- `ignored_words` — `lemma TEXT PRIMARY KEY COLLATE NOCASE`, `addedAt`. Pipeline filters Gemini's output against this table before any cards/sightings get persisted.
 
 **Frequency-suggestion query** (Library "by Frequency" sort + future Study suggested-next rail):
 ```sql
@@ -42,35 +43,44 @@ GROUP BY c.id ORDER BY freq DESC;
 **Routing (Expo Router, file-based, see [app/](app/)):**
 - `app/_layout.tsx` — Root layout. Holds the native splash screen via `SplashScreen.preventAutoHideAsync()`, runs Drizzle migrations on launch via `useMigrations(db, migrations)`, seeds mock cards (gated behind `__DEV__`), reads the `playInSilentMode` setting to configure `expo-audio`, then renders the `(tabs)` group and dismisses the splash.
 - `app/(tabs)/_layout.tsx` — Tab navigator.
-- `app/(tabs)/index.tsx` — **Library tab.** Cards / Folders view-mode toggle, search, sort chips (frequency / A–Z / due), pull-to-refresh, gear icon → `/settings`.
-- `app/(tabs)/study.tsx` — Due-cards study. Snapshots the queue locally on first load so mid-session tab-switches don't shuffle it. "Start over" calls `refetch()` to pull a fresh queue.
-- `app/(tabs)/stats.tsx` — Card-state breakdown, totals, top-frequency lemmas, CSV export button.
+- `app/(tabs)/index.tsx` — **Library tab.** Cards / Folders view-mode toggle, search, sort chips (frequency / A–Z / due), folder-filter chip (ActionSheetIOS picker), pull-to-refresh, gear icon → `/settings`.
+- `app/(tabs)/study.tsx` — Due-cards study. **Front shows English translation, tap reveals German lemma + gender + example DE/EN + notes + Listen button.** Queue is snapshotted locally on first load so mid-session tab-switches don't shuffle it. "Start over" calls `refetch()` to pull a fresh queue. Direction-aware: forward cards (`de_to_en`) and reverse siblings (`en_to_de`) both render with EN on front, DE on back.
+- `app/(tabs)/stats.tsx` — Card-state breakdown, totals, top-frequency lemmas, 12-week activity heatmap + current/longest streak, CSV export button.
 - `app/(tabs)/capture.tsx` — `CameraView` (paused during processing) + photo-library picker.
-- `app/scan/[id].tsx` — Post-capture results: each extracted word with NEW badge or sighting count.
-- `app/card/[id].tsx` — Card detail with edit/delete, sighting list, listen button.
+- `app/scan/[id].tsx` — Post-capture results: per-word checkbox (default checked), uncheck words to remove from this scan; Done shows a batched alert offering [Just remove from scan / Add to ignore list / Cancel]. Each removed sighting cascades to delete its card if no other sightings exist.
+- `app/card/[id].tsx` — Card detail with edit/delete, sighting list, listen button, notes/mnemonic field, direction badge, sibling-direction FSRS state if a reverse exists, "Create reverse" button when missing.
 - `app/folder/[slug].tsx` — Cards belonging to a single folder category.
-- `app/photo/[id].tsx` — Full-screen photo viewer (modal).
-- `app/settings.tsx` — Daily new-card limit stepper + silent-mode toggle (modal).
+- `app/photo/[id].tsx` — Full-screen photo viewer (modal). Folder chip for recategorization (ActionSheetIOS) + tappable bounding-box overlays per detected word → tap navigates to the card.
+- `app/settings.tsx` — Daily new-card limit stepper, silent-mode toggle, auto-create-reverse-cards toggle, bulk-backfill-reverses button, link to ignored-words screen.
+- `app/ignored.tsx` — Modal-presented list of ignored lemmas with per-row Remove buttons. Reached from Settings.
+
+**Route registration:** new screens must be added to the `<Stack>` in `app/_layout.tsx`. Expo Router's typed routes don't pick up new files until `npx expo start` regenerates `.expo/types` — until then, cast as `'/route' as never` when calling `router.push`. Existing examples: `/settings`, `/folder/[slug]`, `/ignored`.
 
 **Services ([services/](services/)):** orchestrators talk to native modules and the DB; pure helpers are extracted to dedicated files so they can be unit-tested without pulling in op-sqlite/expo-file-system/etc.
-- `pipeline.ts` — Orchestrator. Resize image → Gemini Vision → filter + dedupe → one `db.transaction` insert (photo + cards + sightings) → batched `COUNT(*) GROUP BY` for sighting counts.
+- `pipeline.ts` — Orchestrator. Resize image → Gemini Vision → stoplist filter → dedupe → `filterOutIgnored` against `ignored_words` → one `db.transaction` insert (photo + cards + sightings, with reverse-sibling auto-creation when the setting is on) → batched `COUNT(*) GROUP BY` for sighting counts.
 - `pipeline-helpers.ts` — Pure `dedupeByLemma` (testable).
-- `vision.ts` — Gemini 2.5 Flash. Resizes image to ≤1600px via `expo-image-manipulator` before base64, passes an `AbortSignal` with a 30s timeout, retries once on network/5xx.
+- `vision.ts` — Gemini 2.5 Flash. Resizes image to ≤1600px via `expo-image-manipulator` before base64. **`REQUEST_TIMEOUT_MS = 90_000`** with an `AbortSignal`. Tracks whether the timeout fired so the error surfaces as `"Request timed out after 90s"` (vs a generic `"Aborted"` from the SDK for other abort sources like network handoff or backgrounding). Retries once on network/5xx; does NOT retry on timeout. Asks Gemini for per-word `bbox` in `[ymin, xmin, ymax, xmax]` normalized to 0–1000.
 - `scheduler.ts` — ts-fsrs (FSRS-6) wrapper. `emptyState()`, `review()`, `cardToState()`, `stateToCard()`.
 - `review.ts` — `rateCard(id, rating)`. Update + log insert wrapped in one `db.transaction`.
-- `card.ts` — Edit/delete card mutations.
+- `card.ts` — Edit/delete card mutations + reverse-sibling helpers (`createReverseFor`, `bulkCreateReverses`, `findSibling`, `oppositeDirection`).
+- `sighting.ts` — `removeSighting(id)` — one transaction that deletes the sighting and, if no others remain for its card, deletes the card too. Used by Scan Results "uncheck → Done".
+- `ignored.ts` — Ignore-list CRUD over `ignored_words`: `addLemmasToIgnoreList`, `removeLemmaFromIgnoreList`, `getIgnoreList`, `filterOutIgnored`.
+- `photo.ts` — `updatePhotoCategory(id, slug | null)` for the Photo viewer's folder chip.
 - `export.ts` — CSV export orchestrator (DB + file write + iOS share sheet).
 - `csv.ts` — Pure `buildCsv`, `csvEscape`, `stateLabel` (testable). Prepends UTF-8 BOM so Excel reads umlauts.
+- `streaks.ts` — Pure `bucketByDay`, `computeStreaks`, `localDateKey` (testable). Powers the Stats activity heatmap.
+- `bbox.ts` — Pure `parseBBox` (JSON → tuple), `containRect` (compute drawn rect for `contentFit="contain"`), `bboxToScreen` (normalized → screen px). Powers the Photo viewer overlay.
 - `settings.ts` — `getSetting<T>` / `setSetting<T>` over the `settings` table.
 - `speech.ts` — `speakGerman(text)` wrapper around `expo-speech`.
 - `stoplist.ts` — POS-based filter + German function-word set.
 
 **Hooks ([hooks/](hooks/)):** all data hooks are built on `useAsyncQuery` ([hooks/use-async-query.ts](hooks/use-async-query.ts)) which returns `{ loading, data, error, refetch }` and handles the `cancelled` flag + Promise-returning refetch. When adding a new data hook, use this helper rather than re-implementing the pattern.
-- `use-cards.ts` — `useDueCards`, `useLibrary(sort)`, `useCard(id)`, `useFrequencyRanking(limit)`, `useCardSightings(cardId)`.
+- `use-cards.ts` — `useDueCards`, `useLibrary(sort, folderFilter?)`, `useCard(id)`, `useCardWithSibling(id)`, `useFrequencyRanking(limit)`, `useCardSightings(cardId)`, `useSightingsForPhoto(photoId)` (joins lemma + bbox for the photo overlay).
 - `use-folders.ts` — `useFolders` (count by category), `useFolderCards(slug)`.
-- `use-stats.ts` — `useStats` for the Stats tab.
+- `use-stats.ts` — `useStats` for the Stats tab (includes 84-day heatmap + streak counters).
 - `use-scan.ts` — Joins photos × sightings × cards for the scan results screen.
-- `use-settings.ts` — `useDailyNewCardLimit`, `usePlayInSilentMode`.
+- `use-settings.ts` — `useDailyNewCardLimit`, `usePlayInSilentMode`, `useAutoCreateReverseCards`. Boolean settings share `useBooleanSetting` internally — when adding another boolean setting, use that helper rather than copy-pasting the focus-effect dance.
+- `use-ignored.ts` — `useIgnoredWords()` for the ignore-list management screen.
 
 **State:** No global state library. Drizzle queries are the source of truth; hooks reload via `useFocusEffect`. Card sightings (for frequency) are computed by an extra SELECT — fine at our scale, swap to a window function or denormalized counter later if needed.
 
@@ -91,6 +101,9 @@ GROUP BY c.id ORDER BY freq DESC;
 - **`tsconfig.json` has `noUncheckedIndexedAccess: true`.** Array indexing returns `T | undefined`. When you write `arr[i]`, expect TS to flag uses that don't account for `undefined`. Prefer `arr[i]?.foo` or destructuring with defaults; use `arr[i]!` only when you've just bounds-checked.
 - **Pure helpers go in dedicated files so they're testable.** Anything that doesn't need native modules (CSV builders, lemma dedup, FSRS conversions, stoplist checks, slug normalization) lives in its own file with a matching `__tests__/*.test.ts`. The convention is `services/<thing>-helpers.ts` or `services/<thing>.ts`. Orchestrators that touch the DB or native modules stay separate so their tests would need mocking.
 - **CI runs on every push and PR** via [.github/workflows/ci.yml](.github/workflows/ci.yml): `npx tsc --noEmit`, `npm run lint`, `npm test`. Red status = something broke. Jest uses the `jest-expo` preset with `@/` path alias; jest globals (`describe`, `it`, `expect`, …) are scoped to `**/__tests__/**` and `*.test.ts(x)` in [eslint.config.js](eslint.config.js).
+- **Drizzle's `text()` DSL doesn't emit `COLLATE NOCASE`.** If you need a case-insensitive unique key or primary key, hand-edit the generated `.sql` migration file to append the collation (see `0007_outgoing_selene.sql` for the `ignored_words.lemma` example). The migration snapshot under `db/migrations/meta/` doesn't track collation, so the manual edit is safe and persistent — Drizzle won't try to "fix" it on the next generate.
+- **Study tab direction is English on front, German on tap-to-reveal** — this is the production-recall direction (harder, better for active recall) and is the user's preference. Reverse cards (`direction = 'en_to_de'`) and forward cards (`direction = 'de_to_en'`) both render with EN→DE in study mode; the data-level direction column exists for tracking + auto-create-sibling semantics, not for visual orientation.
+- **Cloze deletion mode was tried and removed.** Don't re-pitch masked-sentence study without a meaningfully different design — the user feedback was that `Ich kaufe ___` carries no context to recall the missing word from.
 
 ## Library Documentation
 
@@ -111,6 +124,14 @@ A change is native if running `npx expo prebuild` would modify the `ios/` folder
 
 JS-only changes (UI tweaks, prompt edits, FSRS scheduler wiring, new hooks, SQL queries via Drizzle, etc.) ship via `eas update --branch production --platform ios --message "<short past-tense summary>"`. No version bump needed.
 
+**When a change is OTA-able, present the commit + OTA as a single bundled command** the user can copy-paste:
+
+```bash
+git add -A && git commit -m "<past-tense summary>" && eas update --branch production --platform ios --message "<short user-facing message>"
+```
+
+The user wants the OTA command pre-filled with the commit; don't make them ask for it.
+
 ## Edge Cases
 
 For non-trivial changes (multi-step flows, state interactions, anything beyond a rename or single-line fix), briefly list the edge cases you considered at the end of the response — empty/missing inputs, ordering, what happens when the user cancels, what happens when data the feature depends on isn't there, what happens on a fresh install vs. an upgrade. Skip for trivial changes; a one-line fix doesn't need an edge-case section.
@@ -120,3 +141,9 @@ For non-trivial changes (multi-step flows, state interactions, anything beyond a
 Whenever a response includes a code change, end the response with a `Commit Message:` line (or block, if multiple lines are needed) summarizing the change, ready to paste into `git commit`. Omit for pure questions, explanations, or no-op responses.
 
 Use **past tense** verbs: "Added", "Fixed", "Removed", "Updated", "Restored" — not "Add", "Fix", "Remove", "Update", "Restore". Matches the existing history.
+
+**Keep messages plain and concrete.** No "Tier 1", "Shipped", "Phase X" labels. No test-count footers, no marketing language, no bullet lists of files touched. Describe *what changed and (optionally) why* in one or two sentences. Examples from history:
+- ✅ `"Bumped Gemini request timeout from 60 to 90 seconds."`
+- ✅ `"Removed cloze deletion mode. The masked sentence didn't carry enough context to recall the missing word."`
+- ❌ `"Shipped five Tier 1 OTA features: ..."` (too marketing)
+- ❌ `"... New pure helpers ... with 19 new tests (72 total passing)."` (too verbose)
