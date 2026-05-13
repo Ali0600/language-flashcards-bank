@@ -142,14 +142,11 @@ export default function StudyScreen() {
       <Pressable
         style={[styles.card, { borderColor: tint }]}
         onPress={() => setRevealed((r) => !r)}>
-        <ThemedText type="title" style={styles.lemma}>
-          {frontWord}
-        </ThemedText>
         {revealed ? (
           <View style={styles.back}>
             <View style={styles.lemmaRow}>
               {card.gender && <ThemedText style={styles.gender}>{card.gender}</ThemedText>}
-              <ThemedText type="subtitle" style={styles.germanAnswer}>
+              <ThemedText type="title" style={styles.lemma}>
                 {card.lemma}
               </ThemedText>
             </View>
@@ -175,7 +172,12 @@ export default function StudyScreen() {
             </Pressable>
           </View>
         ) : (
-          <ThemedText style={styles.tapHint}>tap to reveal</ThemedText>
+          <>
+            <ThemedText type="title" style={styles.lemma}>
+              {frontWord}
+            </ThemedText>
+            <ThemedText style={styles.tapHint}>tap to reveal</ThemedText>
+          </>
         )}
       </Pressable>
 
@@ -286,7 +288,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   lemmaRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
-  germanAnswer: { fontSize: 28, lineHeight: 36, textAlign: 'center' },
   tapHint: {
     opacity: 0.5,
     marginTop: 24,
