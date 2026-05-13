@@ -33,6 +33,12 @@ export default function ScanResultsScreen() {
     });
   };
 
+  const goToCategoryStep = () => {
+    // `replace` so back-navigation from the category picker skips this (now
+    // stale, since unchecked rows are already deleted) screen.
+    router.replace(`/scan-category/${id}` as never);
+  };
+
   const applyRemovals = async (alsoIgnore: boolean) => {
     if (submitting) return;
     const uncheckedRows = rows.filter((r) => unchecked.has(r.sightingId));
@@ -46,7 +52,7 @@ export default function ScanResultsScreen() {
       if (alsoIgnore && uncheckedRows.length > 0) {
         await addLemmasToIgnoreList(uncheckedRows.map((r) => r.lemma));
       }
-      router.dismissTo('/(tabs)');
+      goToCategoryStep();
     } catch (e) {
       Alert.alert('Could not apply changes', e instanceof Error ? e.message : String(e));
     } finally {
@@ -54,9 +60,9 @@ export default function ScanResultsScreen() {
     }
   };
 
-  const onDone = () => {
+  const onNext = () => {
     if (unchecked.size === 0) {
-      router.dismissTo('/(tabs)');
+      goToCategoryStep();
       return;
     }
     const uncheckedRows = rows.filter((r) => unchecked.has(r.sightingId));
@@ -146,10 +152,10 @@ export default function ScanResultsScreen() {
 
       <Pressable
         style={[styles.doneBtn, { backgroundColor: tint }, submitting && styles.doneBtnDisabled]}
-        onPress={onDone}
+        onPress={onNext}
         disabled={submitting}>
         <ThemedText style={[styles.doneBtnText, { color: onTint }]}>
-          {submitting ? 'Saving…' : 'Done'}
+          {submitting ? 'Saving…' : 'Next'}
         </ThemedText>
       </Pressable>
     </ThemedView>

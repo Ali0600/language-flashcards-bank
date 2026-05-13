@@ -106,6 +106,7 @@ export default function RootLayout() {
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="scan/[id]" options={{ title: 'Scan results' }} />
+        <Stack.Screen name="scan-category/[id]" options={{ title: 'Pick folder' }} />
         <Stack.Screen name="card/[id]" options={{ title: 'Card' }} />
         <Stack.Screen name="folder/[slug]" options={{ title: 'Folder' }} />
         <Stack.Screen
