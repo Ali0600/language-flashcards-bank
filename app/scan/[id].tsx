@@ -1,11 +1,15 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useScan, type ScanRow } from '@/hooks/use-scan';
+import { addLemmasToIgnoreList } from '@/services/ignored';
+import { removeSighting } from '@/services/sighting';
 
 export default function ScanResultsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -15,6 +19,62 @@ export default function ScanResultsScreen() {
   const onTint = Colors[colorScheme].background;
   const { loading, data, error } = useScan(id);
   const { photo, rows } = data;
+  // Default state: every row is checked. We only track the UNCHECKED ids so a
+  // fresh scan with no toggles has an empty set and Done is a fast-path nav.
+  const [unchecked, setUnchecked] = useState<Set<string>>(new Set());
+  const [submitting, setSubmitting] = useState(false);
+
+  const toggle = (sightingId: string) => {
+    setUnchecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(sightingId)) next.delete(sightingId);
+      else next.add(sightingId);
+      return next;
+    });
+  };
+
+  const applyRemovals = async (alsoIgnore: boolean) => {
+    if (submitting) return;
+    const uncheckedRows = rows.filter((r) => unchecked.has(r.sightingId));
+    setSubmitting(true);
+    try {
+      // Remove sightings one at a time — each is its own transaction so a
+      // partial failure leaves the DB consistent.
+      for (const r of uncheckedRows) {
+        await removeSighting(r.sightingId);
+      }
+      if (alsoIgnore && uncheckedRows.length > 0) {
+        await addLemmasToIgnoreList(uncheckedRows.map((r) => r.lemma));
+      }
+      router.dismissTo('/(tabs)');
+    } catch (e) {
+      Alert.alert('Could not apply changes', e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const onDone = () => {
+    if (unchecked.size === 0) {
+      router.dismissTo('/(tabs)');
+      return;
+    }
+    const uncheckedRows = rows.filter((r) => unchecked.has(r.sightingId));
+    const lemmaList = uncheckedRows
+      .map((r) => r.lemma)
+      .slice(0, 5)
+      .join(', ');
+    const more = uncheckedRows.length > 5 ? ` and ${uncheckedRows.length - 5} more` : '';
+    Alert.alert(
+      `Remove ${uncheckedRows.length} word${uncheckedRows.length === 1 ? '' : 's'}?`,
+      `${lemmaList}${more} will be removed from this scan. Also add them to the ignore list so they don't appear in future scans?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Just remove from scan', onPress: () => applyRemovals(false) },
+        { text: 'Add to ignore list', onPress: () => applyRemovals(true) },
+      ],
+    );
+  };
 
   if (loading) {
     return (
@@ -46,6 +106,11 @@ export default function ScanResultsScreen() {
         <ThemedText type="subtitle">
           {rows.length} word{rows.length === 1 ? '' : 's'} extracted
         </ThemedText>
+        {rows.length > 0 && (
+          <ThemedText style={styles.subtle}>
+            Uncheck any you don&apos;t want as flashcards.
+          </ThemedText>
+        )}
       </View>
 
       {rows.length === 0 ? (
@@ -69,6 +134,8 @@ export default function ScanResultsScreen() {
               item={item}
               tint={tint}
               onTint={onTint}
+              checked={!unchecked.has(item.sightingId)}
+              onToggle={() => toggle(item.sightingId)}
               onPress={() => router.push(`/card/${item.cardId}`)}
             />
           )}
@@ -78,9 +145,12 @@ export default function ScanResultsScreen() {
       )}
 
       <Pressable
-        style={[styles.doneBtn, { backgroundColor: tint }]}
-        onPress={() => router.dismissTo('/(tabs)')}>
-        <ThemedText style={[styles.doneBtnText, { color: onTint }]}>Done</ThemedText>
+        style={[styles.doneBtn, { backgroundColor: tint }, submitting && styles.doneBtnDisabled]}
+        onPress={onDone}
+        disabled={submitting}>
+        <ThemedText style={[styles.doneBtnText, { color: onTint }]}>
+          {submitting ? 'Saving…' : 'Done'}
+        </ThemedText>
       </Pressable>
     </ThemedView>
   );
@@ -90,42 +160,63 @@ function Row({
   item,
   tint,
   onTint,
+  checked,
+  onToggle,
   onPress,
 }: {
   item: ScanRow;
   tint: string;
   onTint: string;
+  checked: boolean;
+  onToggle: () => void;
   onPress: () => void;
 }) {
   const isNew = item.totalSightings === 1;
   return (
-    <Pressable style={styles.row} onPress={onPress}>
-      <View style={styles.rowLeft}>
-        <View style={styles.titleLine}>
-          {item.gender && <ThemedText style={styles.gender}>{item.gender}</ThemedText>}
-          <ThemedText type="defaultSemiBold" style={styles.lemma}>
-            {item.lemma}
-          </ThemedText>
-          {item.surfaceForm.toLowerCase() !== item.lemma.toLowerCase() && (
-            <ThemedText style={styles.surface}>· “{item.surfaceForm}”</ThemedText>
+    <View style={styles.row}>
+      <Pressable
+        onPress={onToggle}
+        hitSlop={8}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked }}
+        accessibilityLabel={`${checked ? 'Uncheck' : 'Check'} ${item.lemma}`}
+        style={styles.checkbox}>
+        <IconSymbol
+          name={checked ? 'checkmark.circle.fill' : 'circle'}
+          size={24}
+          color={checked ? tint : 'rgba(150, 150, 150, 0.7)'}
+        />
+      </Pressable>
+      <Pressable
+        style={[styles.rowBody, !checked && styles.rowBodyMuted]}
+        onPress={onPress}>
+        <View style={styles.rowLeft}>
+          <View style={styles.titleLine}>
+            {item.gender && <ThemedText style={styles.gender}>{item.gender}</ThemedText>}
+            <ThemedText type="defaultSemiBold" style={styles.lemma}>
+              {item.lemma}
+            </ThemedText>
+            {item.surfaceForm.toLowerCase() !== item.lemma.toLowerCase() && (
+              <ThemedText style={styles.surface}>· &ldquo;{item.surfaceForm}&rdquo;</ThemedText>
+            )}
+          </View>
+          {item.translationEn && (
+            <ThemedText style={styles.translation} numberOfLines={1}>
+              {item.translationEn}
+            </ThemedText>
           )}
         </View>
-        {item.translationEn && (
-          <ThemedText style={styles.translation} numberOfLines={1}>
-            {item.translationEn}
-          </ThemedText>
-        )}
-      </View>
-      <View style={styles.rowRight}>
-        {isNew ? (
-          <View style={[styles.badge, { backgroundColor: tint }]}>
-            <ThemedText style={[styles.badgeText, { color: onTint }]}>NEW</ThemedText>
-          </View>
-        ) : (
-          <ThemedText style={styles.subtle}>×{item.totalSightings}</ThemedText>
-        )}
-      </View>
-    </Pressable>
+        <View style={styles.rowRight}>
+          {isNew ? (
+            <View style={[styles.badge, { backgroundColor: tint }]}>
+              <ThemedText style={[styles.badgeText, { color: onTint }]}>NEW</ThemedText>
+            </View>
+          ) : (
+            <ThemedText style={styles.subtle}>×{item.totalSightings}</ThemedText>
+          )}
+        </View>
+      </Pressable>
+    </View>
   );
 }
 
@@ -139,7 +230,10 @@ const styles = StyleSheet.create({
   rawLabel: { fontSize: 12, opacity: 0.6, marginBottom: 6 },
   raw: { fontFamily: 'Courier', fontSize: 13 },
   list: { paddingHorizontal: 16, paddingBottom: 80 },
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 12 },
+  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, gap: 8 },
+  checkbox: { padding: 6 },
+  rowBody: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 6, gap: 12 },
+  rowBodyMuted: { opacity: 0.4 },
   rowLeft: { flex: 1, gap: 4 },
   titleLine: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 4 },
   gender: { opacity: 0.6, fontSize: 15 },
@@ -159,5 +253,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
   },
+  doneBtnDisabled: { opacity: 0.5 },
   doneBtnText: { fontWeight: '600', fontSize: 16 },
 });

@@ -162,6 +162,19 @@ export default function SettingsScreen() {
             </ThemedText>
           </Pressable>
         </View>
+
+        <View style={styles.section}>
+          <ThemedText type="subtitle">Ignored words</ThemedText>
+          <ThemedText style={styles.help}>
+            Words you&apos;ve told the app to skip. Future photos containing them won&apos;t
+            create flashcards.
+          </ThemedText>
+          <Pressable
+            onPress={() => router.push('/ignored' as never)}
+            style={[styles.linkBtn, { borderColor: tint }]}>
+            <ThemedText style={{ color: tint, fontWeight: '600' }}>Manage ignored words</ThemedText>
+          </Pressable>
+        </View>
       </ScrollView>
 
       <Pressable style={[styles.doneBtn, { backgroundColor: tint }]} onPress={() => router.back()}>

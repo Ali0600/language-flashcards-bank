@@ -96,6 +96,15 @@ export const settings = sqliteTable('settings', {
   updatedAt: integer('updated_at').notNull().default(sql`(unixepoch() * 1000)`),
 });
 
+// Words the user has chosen to skip in future scans. Compared case-insensitively
+// (the SQL primary key uses `COLLATE NOCASE`) so "Brot", "brot", and "BROT"
+// collapse to a single entry. Pipeline filters Gemini's output against this
+// table before any cards or sightings are persisted.
+export const ignoredWords = sqliteTable('ignored_words', {
+  lemma: text('lemma').primaryKey(),
+  addedAt: integer('added_at').notNull(),
+});
+
 export type Photo = typeof photos.$inferSelect;
 export type NewPhoto = typeof photos.$inferInsert;
 export type Card = typeof cards.$inferSelect;
@@ -103,5 +112,7 @@ export type NewCard = typeof cards.$inferInsert;
 export type CardSighting = typeof cardSightings.$inferSelect;
 export type NewCardSighting = typeof cardSightings.$inferInsert;
 export type ReviewLog = typeof reviewLogs.$inferSelect;
+export type IgnoredWord = typeof ignoredWords.$inferSelect;
+export type NewIgnoredWord = typeof ignoredWords.$inferInsert;
 export type NewReviewLog = typeof reviewLogs.$inferInsert;
 export type Setting = typeof settings.$inferSelect;

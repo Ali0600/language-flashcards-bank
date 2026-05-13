@@ -116,6 +116,10 @@ export default function RootLayout() {
           name="settings"
           options={{ presentation: 'modal', headerShown: true, title: 'Settings' }}
         />
+        <Stack.Screen
+          name="ignored"
+          options={{ presentation: 'modal', headerShown: true, title: 'Ignored words' }}
+        />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>

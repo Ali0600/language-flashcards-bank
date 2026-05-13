@@ -5,6 +5,7 @@ import uuid from 'react-native-uuid';
 import { db } from '@/db/client';
 import { cards, cardSightings, photos, type NewCard, type NewCardSighting } from '@/db/schema';
 import type { WordAnalysis } from '@/lib/types';
+import { filterOutIgnored } from './ignored';
 import { dedupeByLemma } from './pipeline-helpers';
 import { emptyState } from './scheduler';
 import { DEFAULT_SETTINGS, getSetting, SettingKeys } from './settings';
@@ -46,6 +47,9 @@ export async function processPhoto(imageUri: string): Promise<ScanOutcome> {
 
   const filtered = analyzed.filter(shouldKeepWord);
   const deduped = dedupeByLemma(filtered).filter((w) => w.lemma.trim().length > 0);
+  // Drop any lemma the user has previously marked as ignored. Done after
+  // dedup so we issue one IN(...) query against the candidate set.
+  const kept = await filterOutIgnored(deduped, (w) => w.lemma);
 
   const permanentUri = persistPhoto(imageUri, photoId);
 
@@ -64,7 +68,7 @@ export async function processPhoto(imageUri: string): Promise<ScanOutcome> {
       category,
     });
 
-    const lemmas = deduped.map((w) => w.lemma.trim());
+    const lemmas = kept.map((w) => w.lemma.trim());
     // Match sightings to the FORWARD (de_to_en) card only — reverses don't
     // belong to a photo, they're derived. Lookup includes direction so we
     // don't accidentally pick up a reverse sibling for an existing word.
@@ -94,7 +98,7 @@ export async function processPhoto(imageUri: string): Promise<ScanOutcome> {
     const sightingsToInsert: NewCardSighting[] = [];
     const plan: Array<{ word: WordAnalysis; cardId: string; isNew: boolean }> = [];
 
-    for (const word of deduped) {
+    for (const word of kept) {
       const lemma = word.lemma.trim();
       const existingId = existingByLemma.get(lemma);
       let cardId: string;

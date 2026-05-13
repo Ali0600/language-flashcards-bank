@@ -40,6 +40,9 @@ const MAPPING = {
   'questionmark.folder.fill': 'folder-open',
   'folder.fill': 'folder',
   'chevron.down': 'expand-more',
+  'checkmark.circle.fill': 'check-circle',
+  'circle': 'radio-button-unchecked',
+  'trash.fill': 'delete',
 } as IconMapping;
 
 /**
