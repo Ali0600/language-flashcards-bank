@@ -21,6 +21,9 @@ export const cards = sqliteTable(
     exampleEn: text('example_en'),
     plural: text('plural'),
     notes: text('notes'),
+    direction: text('direction', { enum: ['de_to_en', 'en_to_de'] })
+      .notNull()
+      .default('de_to_en'),
 
     due: integer('due').notNull(),
     stability: real('stability').notNull().default(0),
@@ -37,7 +40,7 @@ export const cards = sqliteTable(
     updatedAt: integer('updated_at').notNull().default(sql`(unixepoch() * 1000)`),
   },
   (table) => [
-    uniqueIndex('cards_lemma_unique').on(table.lemma),
+    uniqueIndex('cards_lemma_direction_unique').on(table.lemma, table.direction),
     index('cards_due_idx').on(table.due),
     index('cards_state_idx').on(table.state),
   ],
@@ -55,6 +58,11 @@ export const cardSightings = sqliteTable(
       .references(() => photos.id, { onDelete: 'cascade' }),
     surfaceForm: text('surface_form').notNull(),
     seenAt: integer('seen_at').notNull(),
+    // Bounding box of the surface form in the source photo. JSON-encoded
+    // 4-element array [ymin, xmin, ymax, xmax] normalized to 0–1000 (Gemini's
+    // standard format). Null for legacy sightings or words Gemini couldn't
+    // confidently localize.
+    bbox: text('bbox'),
   },
   (table) => [
     index('sightings_card_idx').on(table.cardId),

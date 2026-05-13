@@ -14,8 +14,13 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useCard, useCardSightings } from '@/hooks/use-cards';
-import { deleteCard, updateCard, type EditableCardFields } from '@/services/card';
+import { useCardSightings, useCardWithSibling } from '@/hooks/use-cards';
+import {
+  createReverseFor,
+  deleteCard,
+  updateCard,
+  type EditableCardFields,
+} from '@/services/card';
 import { speakGerman } from '@/services/speech';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
@@ -29,8 +34,10 @@ export default function CardDetailScreen() {
   const textColor = Colors[colorScheme].text;
   const onTint = Colors[colorScheme].background;
 
-  const { loading, data: card, error } = useCard(id);
+  const { loading, data: cardData, error, refetch } = useCardWithSibling(id);
+  const { card, sibling } = cardData;
   const { data: sightings } = useCardSightings(id);
+  const [creatingReverse, setCreatingReverse] = useState(false);
 
   const [editing, setEditing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -321,7 +328,8 @@ export default function CardDetailScreen() {
             ))}
           </Section>
 
-          <Section title="FSRS state">
+          <Section
+            title={`FSRS state · ${card.direction === 'de_to_en' ? 'German → English' : 'English → German'}`}>
             <ThemedText style={styles.mono}>
               state: {['New', 'Learning', 'Review', 'Relearning'][card.state] ?? card.state}
             </ThemedText>
@@ -335,6 +343,49 @@ export default function CardDetailScreen() {
               reps: {card.reps} · lapses: {card.lapses}
             </ThemedText>
           </Section>
+
+          {sibling ? (
+            <Section
+              title={`Reverse card · ${sibling.direction === 'de_to_en' ? 'German → English' : 'English → German'}`}>
+              <ThemedText style={styles.mono}>
+                state: {['New', 'Learning', 'Review', 'Relearning'][sibling.state] ?? sibling.state}
+              </ThemedText>
+              <ThemedText style={styles.mono}>
+                due: {new Date(sibling.due).toLocaleString()}
+              </ThemedText>
+              <ThemedText style={styles.mono}>
+                reps: {sibling.reps} · lapses: {sibling.lapses}
+              </ThemedText>
+              <Pressable onPress={() => router.push(`/card/${sibling.id}`)} style={styles.linkRow}>
+                <ThemedText style={[styles.linkText, { color: tint }]}>Open reverse card ›</ThemedText>
+              </Pressable>
+            </Section>
+          ) : (
+            <Pressable
+              disabled={creatingReverse}
+              onPress={async () => {
+                setCreatingReverse(true);
+                try {
+                  const res = await createReverseFor(card.id);
+                  if (res.created) await refetch();
+                } catch (e) {
+                  Alert.alert('Could not create reverse', e instanceof Error ? e.message : String(e));
+                } finally {
+                  setCreatingReverse(false);
+                }
+              }}
+              style={[
+                styles.reverseBtn,
+                { borderColor: tint },
+                creatingReverse && styles.btnDisabled,
+              ]}>
+              <ThemedText style={{ color: tint }}>
+                {creatingReverse
+                  ? 'Creating…'
+                  : `Create reverse (${card.direction === 'de_to_en' ? 'EN → DE' : 'DE → EN'})`}
+              </ThemedText>
+            </Pressable>
+          )}
 
           <Pressable onPress={confirmDelete} style={styles.deleteBtn}>
             <ThemedText style={styles.deleteBtnText}>Delete card</ThemedText>
@@ -430,4 +481,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   deleteBtnText: { color: '#E74C3C', fontWeight: '600' },
+  reverseBtn: {
+    marginTop: 4,
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  linkRow: { paddingTop: 8 },
+  linkText: { fontWeight: '600' },
 });

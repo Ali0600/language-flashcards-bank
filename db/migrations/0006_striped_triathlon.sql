@@ -1,0 +1,1 @@
+ALTER TABLE `card_sightings` ADD `bbox` text;

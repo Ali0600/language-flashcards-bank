@@ -1,4 +1,4 @@
-import { asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import { db } from '@/db/client';
 import { cards, cardSightings, photos, type Card } from '@/db/schema';
@@ -60,10 +60,13 @@ export function useFolderCards(slug: string | undefined): AsyncQueryResult<Folde
       const cardIds = cardIdRows.map((r) => r.cardId);
       if (cardIds.length === 0) return [];
 
+      // Folders only show forward cards since sightings are attached to the
+      // de_to_en row. Reverse siblings live alongside but aren't tied to a
+      // photo's category.
       const inFolder = await db
         .select()
         .from(cards)
-        .where(inArray(cards.id, cardIds))
+        .where(and(inArray(cards.id, cardIds), eq(cards.direction, 'de_to_en')))
         .orderBy(asc(cards.lemma))
         .all();
 

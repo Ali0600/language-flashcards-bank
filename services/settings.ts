@@ -7,6 +7,7 @@ export const SettingKeys = {
   dailyNewCardLimit: 'dailyNewCardLimit',
   playInSilentMode: 'playInSilentMode',
   studyClozeMode: 'studyClozeMode',
+  autoCreateReverseCards: 'autoCreateReverseCards',
 } as const;
 
 export type SettingKey = (typeof SettingKeys)[keyof typeof SettingKeys];
@@ -15,6 +16,7 @@ export const DEFAULT_SETTINGS = {
   dailyNewCardLimit: 10,
   playInSilentMode: true,
   studyClozeMode: false,
+  autoCreateReverseCards: false,
 } as const satisfies Record<SettingKey, unknown>;
 
 export async function getSetting<T>(key: SettingKey, fallback: T): Promise<T> {

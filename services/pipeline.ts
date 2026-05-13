@@ -1,4 +1,4 @@
-import { inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Directory, File, Paths } from 'expo-file-system';
 import uuid from 'react-native-uuid';
 
@@ -7,6 +7,7 @@ import { cards, cardSightings, photos, type NewCard, type NewCardSighting } from
 import type { WordAnalysis } from '@/lib/types';
 import { dedupeByLemma } from './pipeline-helpers';
 import { emptyState } from './scheduler';
+import { DEFAULT_SETTINGS, getSetting, SettingKeys } from './settings';
 import { shouldKeepWord } from './stoplist';
 import { analyzeImage } from './vision';
 
@@ -48,6 +49,12 @@ export async function processPhoto(imageUri: string): Promise<ScanOutcome> {
 
   const permanentUri = persistPhoto(imageUri, photoId);
 
+  // Read this before the tx so we don't keep an in-flight DB connection blocked.
+  const autoReverse = await getSetting<boolean>(
+    SettingKeys.autoCreateReverseCards,
+    DEFAULT_SETTINGS.autoCreateReverseCards,
+  );
+
   const wordPlan = await db.transaction(async (tx) => {
     await tx.insert(photos).values({
       id: photoId,
@@ -58,11 +65,30 @@ export async function processPhoto(imageUri: string): Promise<ScanOutcome> {
     });
 
     const lemmas = deduped.map((w) => w.lemma.trim());
+    // Match sightings to the FORWARD (de_to_en) card only — reverses don't
+    // belong to a photo, they're derived. Lookup includes direction so we
+    // don't accidentally pick up a reverse sibling for an existing word.
     const existing =
       lemmas.length === 0
         ? []
-        : await tx.select().from(cards).where(inArray(cards.lemma, lemmas)).all();
+        : await tx
+            .select()
+            .from(cards)
+            .where(and(inArray(cards.lemma, lemmas), eq(cards.direction, 'de_to_en')))
+            .all();
     const existingByLemma = new Map(existing.map((c) => [c.lemma, c.id]));
+
+    // Which lemmas already have a reverse sibling? Used to skip duplicate
+    // inserts during auto-reverse creation.
+    let lemmasWithReverse = new Set<string>();
+    if (autoReverse && lemmas.length > 0) {
+      const reverses = await tx
+        .select({ lemma: cards.lemma })
+        .from(cards)
+        .where(and(inArray(cards.lemma, lemmas), eq(cards.direction, 'en_to_de')))
+        .all();
+      lemmasWithReverse = new Set(reverses.map((r) => r.lemma));
+    }
 
     const newCards: NewCard[] = [];
     const sightingsToInsert: NewCardSighting[] = [];
@@ -90,6 +116,7 @@ export async function processPhoto(imageUri: string): Promise<ScanOutcome> {
           exampleDe: word.exampleDe,
           exampleEn: word.exampleEn,
           plural: word.plural,
+          direction: 'de_to_en',
           due: initial.due,
           stability: initial.stability,
           difficulty: initial.difficulty,
@@ -104,6 +131,36 @@ export async function processPhoto(imageUri: string): Promise<ScanOutcome> {
           updatedAt: now,
         });
         existingByLemma.set(lemma, cardId);
+
+        // Auto-create the reverse sibling alongside the forward card so the
+        // user starts with both directions queued.
+        if (autoReverse && !lemmasWithReverse.has(lemma)) {
+          const reverseInitial = emptyState(new Date(now));
+          newCards.push({
+            id: id(),
+            lemma,
+            gender: word.gender,
+            pos: word.pos,
+            translationEn: word.translationEn,
+            exampleDe: word.exampleDe,
+            exampleEn: word.exampleEn,
+            plural: word.plural,
+            direction: 'en_to_de',
+            due: reverseInitial.due,
+            stability: reverseInitial.stability,
+            difficulty: reverseInitial.difficulty,
+            elapsedDays: reverseInitial.elapsedDays,
+            scheduledDays: reverseInitial.scheduledDays,
+            learningSteps: reverseInitial.learningSteps,
+            reps: reverseInitial.reps,
+            lapses: reverseInitial.lapses,
+            state: reverseInitial.state,
+            lastReview: reverseInitial.lastReview,
+            createdAt: now,
+            updatedAt: now,
+          });
+          lemmasWithReverse.add(lemma);
+        }
       }
 
       sightingsToInsert.push({
@@ -112,6 +169,7 @@ export async function processPhoto(imageUri: string): Promise<ScanOutcome> {
         photoId,
         surfaceForm: word.surface,
         seenAt: now,
+        bbox: word.bbox ? JSON.stringify(word.bbox) : null,
       });
       plan.push({ word, cardId, isNew });
     }

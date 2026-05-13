@@ -11,6 +11,7 @@ function makeWord(overrides: Partial<WordAnalysis>): WordAnalysis {
     exampleDe: '',
     exampleEn: '',
     plural: null,
+    bbox: null,
     ...overrides,
   };
 }

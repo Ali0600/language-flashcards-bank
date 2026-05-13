@@ -104,8 +104,15 @@ export default function StudyScreen() {
   const card = queue[index];
   if (!card) return null;
 
-  const cloze = clozeMode ? maskLemma(card.exampleDe, card.lemma) : { masked: '', matched: false };
+  const isReverse = card.direction === 'en_to_de';
+  // Cloze only applies to the German-source direction. For EN→DE you're
+  // already producing the German word, masking it would be self-defeating.
+  const cloze =
+    clozeMode && !isReverse ? maskLemma(card.exampleDe, card.lemma) : { masked: '', matched: false };
   const showCloze = cloze.matched;
+
+  const frontWord = isReverse ? (card.translationEn ?? card.lemma) : card.lemma;
+  const backWord = isReverse ? card.lemma : (card.translationEn ?? '');
 
   const onRate = async (rating: ReviewRating) => {
     if (submitting) return;
@@ -143,6 +150,9 @@ export default function StudyScreen() {
       <Pressable
         style={[styles.card, { borderColor: tint }]}
         onPress={() => setRevealed((r) => !r)}>
+        <ThemedText style={styles.directionBadge}>
+          {isReverse ? 'EN → DE' : 'DE → EN'}
+        </ThemedText>
         {showCloze && !revealed ? (
           <>
             <ThemedText style={styles.clozeHint}>Fill in the blank</ThemedText>
@@ -151,14 +161,19 @@ export default function StudyScreen() {
           </>
         ) : (
           <>
-            {card.gender && <ThemedText style={styles.gender}>{card.gender}</ThemedText>}
+            {!isReverse && card.gender && (
+              <ThemedText style={styles.gender}>{card.gender}</ThemedText>
+            )}
             <ThemedText type="title" style={styles.lemma}>
-              {card.lemma}
+              {frontWord}
             </ThemedText>
             {revealed ? (
               <View style={styles.back}>
+                {isReverse && card.gender && (
+                  <ThemedText style={styles.gender}>{card.gender}</ThemedText>
+                )}
                 <ThemedText type="subtitle" style={styles.translation}>
-                  {card.translationEn}
+                  {backWord}
                 </ThemedText>
                 {card.exampleDe && (
                   <ThemedText style={styles.example}>{card.exampleDe}</ThemedText>
@@ -296,6 +311,15 @@ const styles = StyleSheet.create({
     fontSize: 40,
     lineHeight: 52,
     textAlign: 'center',
+  },
+  directionBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 14,
+    fontSize: 10,
+    opacity: 0.45,
+    letterSpacing: 1,
+    fontWeight: '600',
   },
   clozeHint: {
     fontSize: 12,

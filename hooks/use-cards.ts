@@ -84,10 +84,16 @@ export function useLibrary(
 
       const orderBy =
         sort === 'alphabetical' ? asc(cards.lemma) : sort === 'due' ? asc(cards.due) : asc(cards.lemma);
+      // Library only surfaces forward (de_to_en) cards; reverse siblings
+      // appear via the Study queue and on the forward card's detail page.
       const baseQuery = db.select().from(cards);
+      const directionFilter = eq(cards.direction, 'de_to_en');
       const rows = restrictedCardIds
-        ? await baseQuery.where(inArray(cards.id, restrictedCardIds)).orderBy(orderBy).all()
-        : await baseQuery.orderBy(orderBy).all();
+        ? await baseQuery
+            .where(and(directionFilter, inArray(cards.id, restrictedCardIds)))
+            .orderBy(orderBy)
+            .all()
+        : await baseQuery.where(directionFilter).orderBy(orderBy).all();
 
       const freq = sql<number>`COUNT(${cardSightings.id})`.as('freq');
       const counts = await db
@@ -123,6 +129,33 @@ export function useCard(id: string | undefined): AsyncQueryResult<Card | null> {
   );
 }
 
+export type CardWithSibling = { card: Card | null; sibling: Card | null };
+
+/**
+ * Fetch the card by id plus its opposite-direction sibling (same lemma).
+ * `sibling` is null when no reverse exists yet.
+ */
+export function useCardWithSibling(id: string | undefined): AsyncQueryResult<CardWithSibling> {
+  return useAsyncQuery<CardWithSibling>(
+    { card: null, sibling: null },
+    async () => {
+      if (!id) return { card: null, sibling: null };
+      const rows = await db.select().from(cards).where(eq(cards.id, id)).limit(1).all();
+      const card = rows[0] ?? null;
+      if (!card) return { card: null, sibling: null };
+      const oppositeDir = card.direction === 'de_to_en' ? 'en_to_de' : 'de_to_en';
+      const siblingRows = await db
+        .select()
+        .from(cards)
+        .where(and(eq(cards.lemma, card.lemma), eq(cards.direction, oppositeDir)))
+        .limit(1)
+        .all();
+      return { card, sibling: siblingRows[0] ?? null };
+    },
+    [id],
+  );
+}
+
 export type FrequentNewCard = Card & { sightingCount: number };
 
 export function useFrequencyRanking(limit: number = 5): AsyncQueryResult<FrequentNewCard[]> {
@@ -134,7 +167,7 @@ export function useFrequencyRanking(limit: number = 5): AsyncQueryResult<Frequen
         .select({ card: cards, freq })
         .from(cards)
         .leftJoin(cardSightings, eq(cardSightings.cardId, cards.id))
-        .where(eq(cards.state, 0))
+        .where(and(eq(cards.state, 0), eq(cards.direction, 'de_to_en')))
         .groupBy(cards.id)
         .orderBy(desc(freq), asc(cards.lemma))
         .limit(limit)
@@ -166,5 +199,41 @@ export function useCardSightings(
         .all();
     },
     [cardId],
+  );
+}
+
+export type PhotoSighting = {
+  sightingId: string;
+  cardId: string;
+  lemma: string;
+  surfaceForm: string;
+  bbox: string | null;
+};
+
+/**
+ * Sightings within a single photo, with each card's lemma joined in. Used by
+ * the photo viewer to render tappable bounding-box overlays.
+ */
+export function useSightingsForPhoto(
+  photoId: string | undefined,
+): AsyncQueryResult<PhotoSighting[]> {
+  return useAsyncQuery<PhotoSighting[]>(
+    [],
+    async () => {
+      if (!photoId) return [];
+      return db
+        .select({
+          sightingId: cardSightings.id,
+          cardId: cardSightings.cardId,
+          lemma: cards.lemma,
+          surfaceForm: cardSightings.surfaceForm,
+          bbox: cardSightings.bbox,
+        })
+        .from(cardSightings)
+        .innerJoin(cards, eq(cards.id, cardSightings.cardId))
+        .where(eq(cardSightings.photoId, photoId))
+        .all();
+    },
+    [photoId],
   );
 }

@@ -1,8 +1,15 @@
 import { eq } from 'drizzle-orm';
 import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { ActionSheetIOS, ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import {
+  ActionSheetIOS,
+  ActivityIndicator,
+  LayoutChangeEvent,
+  Pressable,
+  StyleSheet,
+  View,
+} from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -15,6 +22,8 @@ import {
 } from '@/constants/folders';
 import { db } from '@/db/client';
 import { photos, type Photo } from '@/db/schema';
+import { useSightingsForPhoto } from '@/hooks/use-cards';
+import { bboxToScreen, containRect, parseBBox } from '@/services/bbox';
 import { updatePhotoCategory } from '@/services/photo';
 
 export default function PhotoScreen() {
@@ -23,6 +32,10 @@ export default function PhotoScreen() {
   const [photo, setPhoto] = useState<Photo | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingCategory, setSavingCategory] = useState(false);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const [boxesVisible, setBoxesVisible] = useState(true);
+  const { data: sightings } = useSightingsForPhoto(id);
 
   useFocusEffect(
     useCallback(() => {
@@ -47,6 +60,29 @@ export default function PhotoScreen() {
       };
     }, [id]),
   );
+
+  const overlays = useMemo(() => {
+    const rect = containRect(containerSize, imageSize);
+    if (rect.w <= 0 || rect.h <= 0) return [];
+    return sightings
+      .map((s) => {
+        const bbox = parseBBox(s.bbox);
+        if (!bbox) return null;
+        const screen = bboxToScreen(bbox, rect);
+        return {
+          sightingId: s.sightingId,
+          cardId: s.cardId,
+          lemma: s.lemma,
+          ...screen,
+        };
+      })
+      .filter((b): b is NonNullable<typeof b> => b !== null);
+  }, [sightings, containerSize, imageSize]);
+
+  const onImageContainerLayout = (e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setContainerSize({ width, height });
+  };
 
   const openCategoryPicker = () => {
     if (!photo || savingCategory) return;
@@ -98,14 +134,53 @@ export default function PhotoScreen() {
     );
   }
 
+  const hasOverlays = overlays.length > 0;
+
   return (
     <View style={styles.container}>
-      <Image
-        source={{ uri: photo.imageUri }}
-        style={styles.image}
-        contentFit="contain"
-        transition={150}
-      />
+      <View style={styles.imageContainer} onLayout={onImageContainerLayout}>
+        <Image
+          source={{ uri: photo.imageUri }}
+          style={styles.image}
+          contentFit="contain"
+          transition={150}
+          onLoad={(e) => {
+            const src = e.source;
+            if (src && src.width > 0 && src.height > 0) {
+              setImageSize({ width: src.width, height: src.height });
+            }
+          }}
+        />
+        {boxesVisible &&
+          overlays.map((box) => (
+            <Pressable
+              key={box.sightingId}
+              accessibilityRole="button"
+              accessibilityLabel={`Open card for ${box.lemma}`}
+              onPress={() => router.push(`/card/${box.cardId}`)}
+              style={[
+                styles.bboxBox,
+                { left: box.left, top: box.top, width: box.width, height: box.height },
+              ]}>
+              <View style={styles.bboxLabel}>
+                <ThemedText style={styles.bboxLabelText} numberOfLines={1}>
+                  {box.lemma}
+                </ThemedText>
+              </View>
+            </Pressable>
+          ))}
+        {hasOverlays && (
+          <Pressable
+            onPress={() => setBoxesVisible((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel={boxesVisible ? 'Hide bounding boxes' : 'Show bounding boxes'}
+            style={styles.bboxToggle}>
+            <ThemedText style={styles.bboxToggleText}>
+              {boxesVisible ? 'Hide boxes' : 'Show boxes'}
+            </ThemedText>
+          </Pressable>
+        )}
+      </View>
       <View style={styles.footer}>
         <ThemedText style={styles.meta}>
           {new Date(photo.takenAt).toLocaleString()}
@@ -145,7 +220,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 16,
   },
+  imageContainer: { flex: 1, width: '100%' },
   image: { flex: 1, width: '100%' },
+  bboxBox: {
+    position: 'absolute',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 235, 59, 0.95)',
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 235, 59, 0.12)',
+  },
+  bboxLabel: {
+    position: 'absolute',
+    top: -18,
+    left: -1,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    maxWidth: 160,
+  },
+  bboxLabelText: { color: '#FFEB3B', fontSize: 11, fontWeight: '600' },
+  bboxToggle: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  bboxToggleText: { color: 'white', fontSize: 12, fontWeight: '600' },
   footer: { padding: 20, gap: 10, backgroundColor: 'rgba(0,0,0,0.8)' },
   meta: { color: 'rgba(255,255,255,0.7)', fontSize: 13 },
   folderChip: {

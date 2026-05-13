@@ -3,7 +3,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 
 import { FOLDER_SLUGS, normalizeCategory, type FolderSlug } from '@/constants/folders';
 import { assertGeminiKey } from '@/lib/env';
-import type { WordAnalysis } from '@/lib/types';
+import type { BBox, WordAnalysis } from '@/lib/types';
 
 const MODEL = 'gemini-2.5-flash';
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -20,8 +20,18 @@ const wordSchema = {
     exampleDe: { type: Type.STRING },
     exampleEn: { type: Type.STRING },
     plural: { type: Type.STRING },
+    // Bounding box for the surface form as it appears in the image.
+    // Gemini's standard object-detection format: [ymin, xmin, ymax, xmax]
+    // normalized to [0, 1000]. Client converts to pixels.
+    bbox: {
+      type: Type.ARRAY,
+      items: { type: Type.INTEGER },
+      minItems: '4',
+      maxItems: '4',
+      description: 'Bounding box [ymin, xmin, ymax, xmax] normalized to 0-1000.',
+    },
   },
-  required: ['surface', 'lemma', 'gender', 'pos', 'translationEn', 'exampleDe', 'exampleEn'],
+  required: ['surface', 'lemma', 'gender', 'pos', 'translationEn', 'exampleDe', 'exampleEn', 'bbox'],
 };
 
 const responseSchema = {
@@ -50,6 +60,7 @@ Rules for words:
 - Skip duplicates (same lemma).
 - "exampleDe" / "exampleEn": short natural sentence demonstrating use.
 - "plural" for nouns only; empty string otherwise.
+- "bbox" is the bounding box of the surface form as it appears in the image, in the format [ymin, xmin, ymax, xmax] normalized to 0–1000. Box should tightly enclose just the word.
 
 Rules for category (pick exactly one):
 - "food_drink_packaging": boxes, cans, bottles, ingredient labels, grocery items.
@@ -157,6 +168,7 @@ export async function analyzeImage(imageUri: string): Promise<VisionResult> {
       exampleDe: string;
       exampleEn: string;
       plural?: string;
+      bbox?: unknown;
     }>;
     category?: string;
   };
@@ -172,7 +184,25 @@ export async function analyzeImage(imageUri: string): Promise<VisionResult> {
       exampleDe: p.exampleDe,
       exampleEn: p.exampleEn,
       plural: p.plural && p.plural.length > 0 ? p.plural : null,
+      bbox: normalizeBbox(p.bbox),
     })),
     category: normalizeCategory(parsed.category),
   };
+}
+
+function normalizeBbox(value: unknown): BBox | null {
+  if (!Array.isArray(value) || value.length !== 4) return null;
+  const nums = value.map((v) => (typeof v === 'number' ? v : Number(v)));
+  if (nums.some((n) => !Number.isFinite(n))) return null;
+  // Clamp into the documented [0, 1000] range. Gemini occasionally returns
+  // out-of-bounds coords for cropped/edge words; clamping keeps the overlay
+  // inside the image rect.
+  const clamp = (n: number) => Math.max(0, Math.min(1000, Math.round(n)));
+  const [ymin, xmin, ymax, xmax] = nums.map(clamp);
+  // Discard degenerate boxes (zero area or inverted).
+  if (ymin === undefined || xmin === undefined || ymax === undefined || xmax === undefined) {
+    return null;
+  }
+  if (ymax <= ymin || xmax <= xmin) return null;
+  return [ymin, xmin, ymax, xmax];
 }

@@ -82,3 +82,10 @@ export function usePlayInSilentMode() {
 export function useStudyClozeMode() {
   return useBooleanSetting(SettingKeys.studyClozeMode, DEFAULT_SETTINGS.studyClozeMode);
 }
+
+export function useAutoCreateReverseCards() {
+  return useBooleanSetting(
+    SettingKeys.autoCreateReverseCards,
+    DEFAULT_SETTINGS.autoCreateReverseCards,
+  );
+}
