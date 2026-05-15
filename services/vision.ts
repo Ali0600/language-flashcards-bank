@@ -40,6 +40,13 @@ const responseSchema = {
     rawText: { type: Type.STRING },
     words: { type: Type.ARRAY, items: wordSchema },
     category: { type: Type.STRING, enum: [...FOLDER_SLUGS] },
+    // Only set when category is 'screenshots' — names the app or platform
+    // (e.g. "Instagram", "Discord"). Empty string otherwise. Not in
+    // `required` because some older clients/models can omit empty fields.
+    appName: {
+      type: Type.STRING,
+      description: 'For screenshots only: the app/platform shown. Empty otherwise.',
+    },
   },
   required: ['rawText', 'words', 'category'],
 };
@@ -73,8 +80,13 @@ Rules for category (pick exactly one):
 - "clothing_textiles": clothing tags, care labels, fashion text.
 - "electronics_appliances": device manuals, tech packaging, electronic appliance labels.
 - "outdoor_nature": parks, trails, gardening, weather, outdoor signs.
+- "screenshots": phone screenshots, app UIs, social-media posts, browser windows, anything that is clearly a digital screen capture rather than a physical object.
 - "other": anything that does not clearly fit one of the above.
-Pick the single best fit. If unsure, use "other".`;
+Pick the single best fit. If unsure, use "other".
+
+Rules for appName:
+- If category is "screenshots", set "appName" to the app or platform shown (e.g. "Instagram", "Twitter", "Discord", "Safari", "WhatsApp", "iMessage"). Use the user-facing brand name. If you cannot identify the app, leave appName as empty string.
+- For all other categories, leave "appName" as empty string.`;
 
 function normalizeGender(g: string): WordAnalysis['gender'] {
   if (g === 'der' || g === 'die' || g === 'das') return g;
@@ -85,6 +97,8 @@ export type VisionResult = {
   rawText: string;
   words: WordAnalysis[];
   category: FolderSlug | null;
+  /** App/platform name when `category === 'screenshots'`; null otherwise or when Gemini couldn't identify one. */
+  appName: string | null;
 };
 
 async function resizeAndEncode(imageUri: string): Promise<string> {
@@ -187,7 +201,7 @@ export async function analyzeImage(
     text = await callGemini(base64, focusRegion);
   }
 
-  if (!text) return { rawText: '', words: [], category: null };
+  if (!text) return { rawText: '', words: [], category: null, appName: null };
 
   const parsed = JSON.parse(text) as {
     rawText: string;
@@ -203,7 +217,15 @@ export async function analyzeImage(
       bbox?: unknown;
     }>;
     category?: string;
+    appName?: string;
   };
+
+  const category = normalizeCategory(parsed.category);
+  // Only carry appName when category landed on screenshots — Gemini may
+  // populate it speculatively even for other scenes, but it's only meaningful
+  // (and only used by the sub-cat picker) under screenshots.
+  const rawAppName = (parsed.appName ?? '').trim();
+  const appName = category === 'screenshots' && rawAppName.length > 0 ? rawAppName : null;
 
   return {
     rawText: parsed.rawText,
@@ -218,7 +240,8 @@ export async function analyzeImage(
       plural: p.plural && p.plural.length > 0 ? p.plural : null,
       bbox: normalizeBbox(p.bbox),
     })),
-    category: normalizeCategory(parsed.category),
+    category,
+    appName,
   };
 }
 

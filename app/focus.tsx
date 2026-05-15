@@ -141,7 +141,13 @@ export default function FocusScreen() {
     setProcessing(true);
     try {
       const outcome = await processPhoto(uri, { focusRegion: region });
-      router.replace(`/scan/${outcome.photoId}`);
+      // Forward Gemini's sub-category suggestion (e.g. "Instagram" for a
+      // screenshots photo) as a query param so the scan-subcategory screen
+      // can show a "Create new: <suggestion>" tile downstream.
+      const qs = outcome.subCategorySuggestion
+        ? `?suggestion=${encodeURIComponent(outcome.subCategorySuggestion)}`
+        : '';
+      router.replace(`/scan/${outcome.photoId}${qs}` as never);
     } catch (e) {
       Alert.alert('Could not analyze photo', e instanceof Error ? e.message : String(e));
       setProcessing(false);

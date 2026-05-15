@@ -9,6 +9,7 @@ export const FOLDER_SLUGS = [
   'clothing_textiles',
   'electronics_appliances',
   'outdoor_nature',
+  'screenshots',
   'other',
 ] as const;
 
@@ -29,6 +30,7 @@ export const FOLDER_LABELS: Record<AnyFolderSlug, string> = {
   clothing_textiles: 'Clothing & Textiles',
   electronics_appliances: 'Electronics & Appliances',
   outdoor_nature: 'Outdoor & Nature',
+  screenshots: 'Screenshots',
   other: 'Other',
   uncategorized: 'Uncategorized',
 };
@@ -45,6 +47,7 @@ export const FOLDER_ICONS: Record<
   | 'tshirt.fill'
   | 'tv.fill'
   | 'leaf.fill'
+  | 'iphone'
   | 'square.stack.fill'
   | 'questionmark.folder.fill'
 > = {
@@ -58,9 +61,28 @@ export const FOLDER_ICONS: Record<
   clothing_textiles: 'tshirt.fill',
   electronics_appliances: 'tv.fill',
   outdoor_nature: 'leaf.fill',
+  screenshots: 'iphone',
   other: 'square.stack.fill',
   uncategorized: 'questionmark.folder.fill',
 };
+
+/**
+ * Categories whose photos can be further organized into per-parent sub-categories
+ * (e.g. `screenshots` → individual apps like Instagram, Twitter, Discord).
+ *
+ * Adding a parent here flips three behaviours on automatically:
+ *   1. The capture wizard chains into the sub-category picker after the category step.
+ *   2. The Library > Folders view drills into the sub-category grid before showing cards.
+ *   3. The pipeline auto-matches Gemini's `appName` hint against existing sub-cats.
+ */
+export const FOLDERS_WITH_SUBCATEGORIES: ReadonlySet<FolderSlug> = new Set<FolderSlug>([
+  'screenshots',
+]);
+
+export function hasSubCategories(slug: string | null | undefined): slug is FolderSlug {
+  if (!slug) return false;
+  return FOLDERS_WITH_SUBCATEGORIES.has(slug as FolderSlug);
+}
 
 export function folderLabel(slug: string | null | undefined): string {
   if (!slug) return FOLDER_LABELS.uncategorized;

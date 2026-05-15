@@ -36,6 +36,7 @@ const MAPPING = {
   'tshirt.fill': 'checkroom',
   'tv.fill': 'devices',
   'leaf.fill': 'park',
+  'iphone': 'phone-iphone',
   'square.stack.fill': 'apps',
   'questionmark.folder.fill': 'folder-open',
   'folder.fill': 'folder',

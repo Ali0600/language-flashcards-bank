@@ -11,6 +11,7 @@ import {
   FOLDER_LABELS,
   FOLDER_SLUGS,
   UNCATEGORIZED_SLUG,
+  hasSubCategories,
   normalizeCategory,
   type AnyFolderSlug,
   type FolderSlug,
@@ -29,7 +30,7 @@ const ALL_SLUGS: AnyFolderSlug[] = [...FOLDER_SLUGS, UNCATEGORIZED_SLUG];
  * back-navigation skips the (now stale) scan list and returns to capture.
  */
 export default function ScanCategoryScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, suggestion } = useLocalSearchParams<{ id: string; suggestion?: string }>();
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const tint = Colors[colorScheme].tint;
@@ -72,19 +73,34 @@ export default function ScanCategoryScreen() {
     }, [id]),
   );
 
+  const nextCategoryHasSubCats = hasSubCategories(
+    selected === UNCATEGORIZED_SLUG ? null : selected,
+  );
+  // Only forward Gemini's app-name suggestion when the user kept (or returned
+  // to) the category Gemini originally tagged. Otherwise the suggestion is
+  // stale — it was for a different scene.
+  const suggestionToForward =
+    nextCategoryHasSubCats && selected === geminiPick ? (suggestion ?? '') : '';
+
   const onSave = async () => {
     if (!photo || saving) return;
     const nextCategory: FolderSlug | null =
       selected === UNCATEGORIZED_SLUG ? null : selected;
     const currentCategory = normalizeCategory(photo.category);
-    if (nextCategory === currentCategory) {
-      router.dismissTo('/(tabs)');
-      return;
-    }
+
     setSaving(true);
     try {
-      await updatePhotoCategory(photo.id, nextCategory);
-      router.dismissTo('/(tabs)');
+      if (nextCategory !== currentCategory) {
+        await updatePhotoCategory(photo.id, nextCategory);
+      }
+      if (nextCategoryHasSubCats) {
+        const qs = suggestionToForward
+          ? `?suggestion=${encodeURIComponent(suggestionToForward)}`
+          : '';
+        router.replace(`/scan-subcategory/${photo.id}${qs}` as never);
+      } else {
+        router.dismissTo('/(tabs)');
+      }
     } catch (e) {
       Alert.alert('Could not save category', e instanceof Error ? e.message : String(e));
       setSaving(false);
@@ -143,7 +159,7 @@ export default function ScanCategoryScreen() {
         onPress={onSave}
         disabled={saving}>
         <ThemedText style={[styles.saveBtnText, { color: onTint }]}>
-          {saving ? 'Saving…' : 'Save & Finish'}
+          {saving ? 'Saving…' : nextCategoryHasSubCats ? 'Next' : 'Save & Finish'}
         </ThemedText>
       </Pressable>
     </ThemedView>

@@ -2,6 +2,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Directory, File, Paths } from 'expo-file-system';
 import uuid from 'react-native-uuid';
 
+import { hasSubCategories } from '@/constants/folders';
 import { db } from '@/db/client';
 import { cards, cardSightings, photos, type NewCard, type NewCardSighting } from '@/db/schema';
 import type { BBox, WordAnalysis } from '@/lib/types';
@@ -10,6 +11,7 @@ import { dedupeByLemma } from './pipeline-helpers';
 import { emptyState } from './scheduler';
 import { DEFAULT_SETTINGS, getSetting, SettingKeys } from './settings';
 import { shouldKeepWord } from './stoplist';
+import { findSubCategoryByName } from './subcategory';
 import { analyzeImage } from './vision';
 
 function id(): string {
@@ -34,6 +36,14 @@ export type ScanOutcome = {
     isNew: boolean;
     sightingsAfter: number;
   }>;
+  /**
+   * Gemini's raw sub-category suggestion (e.g. "Instagram") when the photo
+   * landed in a sub-cat-enabled parent (today: screenshots) and Gemini
+   * supplied a non-empty `appName`. Echoed through so the scan-subcategory
+   * picker can show a "Create new" tile without re-querying the model.
+   * Null when not applicable.
+   */
+  subCategorySuggestion: string | null;
 };
 
 export async function processPhoto(
@@ -47,6 +57,7 @@ export async function processPhoto(
   const analyzed = visionResult.words;
   const rawText = visionResult.rawText;
   const category = visionResult.category;
+  const appName = visionResult.appName;
 
   const filtered = analyzed.filter(shouldKeepWord);
   const deduped = dedupeByLemma(filtered).filter((w) => w.lemma.trim().length > 0);
@@ -56,11 +67,23 @@ export async function processPhoto(
 
   const permanentUri = persistPhoto(imageUri, photoId);
 
-  // Read this before the tx so we don't keep an in-flight DB connection blocked.
+  // Read these before the tx so we don't keep an in-flight DB connection blocked.
   const autoReverse = await getSetting<boolean>(
     SettingKeys.autoCreateReverseCards,
     DEFAULT_SETTINGS.autoCreateReverseCards,
   );
+
+  // If the photo landed in a sub-cat-enabled parent and Gemini named an app
+  // we already have on file, pre-assign the photo to that sub-cat. The
+  // suggestion is echoed through ScanOutcome regardless so the picker can
+  // still offer a "Create new" tile when no match exists.
+  let resolvedSubCategoryId: string | null = null;
+  let subCategorySuggestion: string | null = null;
+  if (category && hasSubCategories(category) && appName) {
+    subCategorySuggestion = appName;
+    const match = await findSubCategoryByName(category, appName).catch(() => null);
+    if (match) resolvedSubCategoryId = match.id;
+  }
 
   const wordPlan = await db.transaction(async (tx) => {
     await tx.insert(photos).values({
@@ -69,6 +92,7 @@ export async function processPhoto(
       imageUri: permanentUri,
       rawOcrText: rawText,
       category,
+      subCategoryId: resolvedSubCategoryId,
     });
 
     const lemmas = kept.map((w) => w.lemma.trim());
@@ -217,5 +241,6 @@ export async function processPhoto(
     photoId,
     rawText,
     results,
+    subCategorySuggestion,
   };
 }

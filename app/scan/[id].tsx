@@ -12,7 +12,7 @@ import { addLemmasToIgnoreList } from '@/services/ignored';
 import { removeSighting } from '@/services/sighting';
 
 export default function ScanResultsScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, suggestion } = useLocalSearchParams<{ id: string; suggestion?: string }>();
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const tint = Colors[colorScheme].tint;
@@ -35,8 +35,12 @@ export default function ScanResultsScreen() {
 
   const goToCategoryStep = () => {
     // `replace` so back-navigation from the category picker skips this (now
-    // stale, since unchecked rows are already deleted) screen.
-    router.replace(`/scan-category/${id}` as never);
+    // stale, since unchecked rows are already deleted) screen. Forward
+    // Gemini's sub-category suggestion if there is one — the category screen
+    // re-emits it onward to /scan-subcategory only when the chosen parent
+    // supports sub-categories.
+    const qs = suggestion ? `?suggestion=${encodeURIComponent(suggestion)}` : '';
+    router.replace(`/scan-category/${id}${qs}` as never);
   };
 
   const applyRemovals = async (alsoIgnore: boolean) => {

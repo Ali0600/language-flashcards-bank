@@ -11,7 +11,8 @@ iOS app built with React Native + Expo. Snap a picture of food packaging, a post
 - **Photo capture pipeline.** Camera + photo-library picker → Gemini 2.5 Flash → structured JSON of words → deduped flashcards. All in one tap.
 - **Per-word checklist on Scan Results.** Uncheck words you don't want as flashcards. Optionally add the unchecked lemmas to a persistent **Ignore List** so future captures skip them automatically. Manage the list from Settings.
 - **Tappable bounding boxes on photos.** The photo viewer overlays a box around each detected word (Gemini Vision returns the coordinates) — tap a box to jump straight to that card.
-- **Auto-categorized folders, with recategorize.** Each photo is classified into one of 11 scene categories (food packaging, cooking, household, signs, transport, health, documents, clothing, electronics, outdoor, other). Misclassified? Open the photo and pick a different folder. Library tab can group cards by folder or filter the flat Cards view by folder.
+- **Auto-categorized folders, with recategorize.** Each photo is classified into one of 12 scene categories (food packaging, cooking, household, signs, transport, health, documents, clothing, electronics, outdoor, screenshots, other). Misclassified? Open the photo and pick a different folder. Library tab can group cards by folder or filter the flat Cards view by folder.
+- **Screenshots get app sub-folders.** When a photo lands in the Screenshots category, Gemini also identifies the app (Instagram, Twitter, Discord, etc.). The capture wizard gains a third step where you can confirm the suggestion, pick a different existing app, or skip. The Library > Folders > Screenshots tile drills into a grid of app sub-folders.
 - **FSRS-6 spaced repetition.** Real algorithm via [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs), not a homegrown SM-2.
 - **Production-recall study direction.** Front shows the English translation; tap reveals the German lemma + gender + example sentences. The harder, more effective direction by default.
 - **Reverse cards (EN → DE) — optional.** Toggle in Settings to auto-create an `en_to_de` sibling for every new card, or bulk-backfill all existing cards. Each direction has its own independent FSRS state.
@@ -75,12 +76,13 @@ iOS app built with React Native + Expo. Snap a picture of food packaging, a post
 
 ### Data model (Drizzle, see [db/schema.ts](db/schema.ts))
 
-- `photos` — id, taken_at, image_uri (local), raw_ocr_text, category (one of 11 fixed slugs)
+- `photos` — id, taken_at, image_uri (local), raw_ocr_text, category (one of 12 fixed slugs), sub_category_id (optional second dimension, used today only for Screenshots → specific apps)
 - `cards` — id, lemma, gender, pos, translation, example DE/EN, plural, notes, **direction** (`de_to_en` | `en_to_de`), plus flat FSRS state columns. Compound unique on `(lemma, direction)` so a forward and reverse can coexist
 - `card_sightings` — one row per word-in-photo (cardId, photoId, surfaceForm, seenAt, **bbox** — JSON `[ymin, xmin, ymax, xmax]` normalized 0–1000, nullable)
 - `review_logs` — full FSRS audit trail per rating
 - `settings` — JSON-serialized key/value store for `dailyNewCardLimit`, `playInSilentMode`, `autoCreateReverseCards`
 - `ignored_words` — lemmas the user has chosen to skip in future scans (case-insensitive primary key via `COLLATE NOCASE`)
+- `sub_categories` — per-parent app/brand tags. Today scoped to `parent_slug='screenshots'` (Instagram, Twitter, Discord, etc.). Case-insensitive unique on `(parent_slug, name)`.
 
 A card's frequency score is just `COUNT(*)` over its sightings — computed at query time, not denormalized.
 
@@ -97,6 +99,8 @@ app/card/[id].tsx        → Card detail (edit/delete, notes, reverse-sibling st
 app/folder/[slug].tsx    → Cards in a folder
 app/photo/[id].tsx       → Full-screen photo viewer (modal) with bbox overlays + recategorize
 app/scan/[id].tsx        → Post-capture results with per-word checkboxes
+app/scan-category/[id].tsx     → Step 2 of capture wizard: confirm/change folder
+app/scan-subcategory/[id].tsx  → Step 3 of capture wizard (Screenshots only): pick app
 app/settings.tsx         → Settings (modal)
 app/ignored.tsx          → Ignored words list (modal)
 ```

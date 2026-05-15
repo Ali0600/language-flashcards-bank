@@ -9,6 +9,7 @@ import m0004 from './0004_perfect_juggernaut.sql';
 import m0005 from './0005_redundant_stardust.sql';
 import m0006 from './0006_striped_triathlon.sql';
 import m0007 from './0007_outgoing_selene.sql';
+import m0008 from './0008_shallow_plazm.sql';
 
   export default {
     journal,
@@ -20,7 +21,8 @@ m0003,
 m0004,
 m0005,
 m0006,
-m0007
+m0007,
+m0008
     }
   }
   

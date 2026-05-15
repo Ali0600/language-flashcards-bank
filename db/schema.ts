@@ -7,6 +7,12 @@ export const photos = sqliteTable('photos', {
   imageUri: text('image_uri').notNull(),
   rawOcrText: text('raw_ocr_text'),
   category: text('category'),
+  // Optional second-dimension classification, only used for categories in
+  // FOLDERS_WITH_SUBCATEGORIES (today: `screenshots` only, where this points
+  // at a specific app like Instagram). Soft reference — no FK because
+  // op-sqlite doesn't enforce them and the schema avoids them elsewhere;
+  // services/subcategory.ts handles referential cleanup on delete.
+  subCategoryId: text('sub_category_id'),
 });
 
 export const cards = sqliteTable(
@@ -105,6 +111,21 @@ export const ignoredWords = sqliteTable('ignored_words', {
   addedAt: integer('added_at').notNull(),
 });
 
+// Per-parent sub-categories. Currently only `parent_slug='screenshots'` is
+// used (sub-cats hold app names like "Instagram", "Twitter"). The unique
+// index in the generated SQL is hand-edited to `COLLATE NOCASE` so casing
+// variations of the same name collapse to a single row.
+export const subCategories = sqliteTable(
+  'sub_categories',
+  {
+    id: text('id').primaryKey(),
+    parentSlug: text('parent_slug').notNull(),
+    name: text('name').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [uniqueIndex('sub_categories_parent_name_nocase').on(table.parentSlug, table.name)],
+);
+
 export type Photo = typeof photos.$inferSelect;
 export type NewPhoto = typeof photos.$inferInsert;
 export type Card = typeof cards.$inferSelect;
@@ -116,3 +137,5 @@ export type IgnoredWord = typeof ignoredWords.$inferSelect;
 export type NewIgnoredWord = typeof ignoredWords.$inferInsert;
 export type NewReviewLog = typeof reviewLogs.$inferInsert;
 export type Setting = typeof settings.$inferSelect;
+export type SubCategory = typeof subCategories.$inferSelect;
+export type NewSubCategory = typeof subCategories.$inferInsert;
