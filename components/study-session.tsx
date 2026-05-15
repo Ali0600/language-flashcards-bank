@@ -1,7 +1,14 @@
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Animated,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -11,7 +18,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import type { Card } from '@/db/schema';
 import { rateCard, type ReviewRating } from '@/services/review';
 import { Rating } from '@/services/scheduler';
-import { speakGerman } from '@/services/speech';
+import { speakGerman, stopSpeech } from '@/services/speech';
 import type { FrequentNewCard } from '@/hooks/use-cards';
 
 const RATINGS: { label: string; rating: ReviewRating; color: string }[] = [
@@ -59,6 +66,10 @@ export function StudySession({
   const [revealed, setRevealed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [sessionCount, setSessionCount] = useState(0);
+  // Driven by expo-speech callbacks. Controls the pulsing halo on the inline
+  // speaker icon next to the lemma — true while audio is actually playing.
+  const [isPlayingWord, setIsPlayingWord] = useState(false);
+  const haloAnim = useRef(new Animated.Value(0)).current;
 
   // Snapshot the queue once, the first time we have data. Re-rendering
   // mid-session (a tab switch causing a re-query) must NOT reshuffle order.
@@ -67,6 +78,49 @@ export function StudySession({
       setQueue(dueCards);
     }
   }, [queue, loading, dueCards]);
+
+  // The current card is computed below; capture its id + lemma here so the
+  // auto-play effect's dependencies are primitive (the card object itself
+  // wouldn't be a stable identity across renders).
+  const currentCard = queue && index < queue.length ? queue[index] : null;
+  const currentLemma = currentCard?.lemma ?? null;
+  const currentCardId = currentCard?.id ?? null;
+
+  // Auto-play the lemma the moment the back of the card is revealed. The
+  // user gets a free pronunciation each time they flip; tapping the inline
+  // speaker icon below replays it.
+  useEffect(() => {
+    if (!revealed || !currentLemma) return;
+    stopSpeech();
+    speakGerman(currentLemma, {
+      onStart: () => setIsPlayingWord(true),
+      onDone: () => setIsPlayingWord(false),
+      onStopped: () => setIsPlayingWord(false),
+      onError: () => setIsPlayingWord(false),
+    });
+    return () => {
+      stopSpeech();
+      setIsPlayingWord(false);
+    };
+  }, [revealed, currentCardId, currentLemma]);
+
+  // Loop a scale+opacity pulse on the halo behind the inline speaker while
+  // the word is playing. Stops cleanly when playback ends and resets the
+  // animated value so the next play starts from zero opacity.
+  useEffect(() => {
+    if (!isPlayingWord) {
+      haloAnim.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(haloAnim, { toValue: 1, duration: 550, useNativeDriver: true }),
+        Animated.timing(haloAnim, { toValue: 0, duration: 550, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [isPlayingWord, haloAnim]);
 
   if (loading && queue === null) {
     return (
@@ -129,8 +183,27 @@ export function StudySession({
     );
   }
 
-  const card = queue[index];
+  const card = currentCard;
   if (!card) return null;
+
+  const replayWord = (e?: { stopPropagation?: () => void }) => {
+    e?.stopPropagation?.();
+    if (!card.lemma) return;
+    stopSpeech();
+    speakGerman(card.lemma, {
+      onStart: () => setIsPlayingWord(true),
+      onDone: () => setIsPlayingWord(false),
+      onStopped: () => setIsPlayingWord(false),
+      onError: () => setIsPlayingWord(false),
+    });
+  };
+
+  const playSentence = (e?: { stopPropagation?: () => void }) => {
+    e?.stopPropagation?.();
+    if (!card.exampleDe) return;
+    stopSpeech();
+    speakGerman(card.exampleDe);
+  };
 
   // Always show the English translation on the front. German lemma (+ gender,
   // example, etc.) is the answer revealed on the back — production-recall
@@ -185,6 +258,35 @@ export function StudySession({
               <ThemedText type="title" style={styles.lemma}>
                 {card.lemma}
               </ThemedText>
+              <Pressable
+                onPress={(e) => replayWord(e)}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={`Replay pronunciation of ${card.lemma}`}
+                style={styles.wordSpeakBtn}>
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    styles.wordSpeakHalo,
+                    { backgroundColor: tint },
+                    {
+                      opacity: haloAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, 0.35],
+                      }),
+                      transform: [
+                        {
+                          scale: haloAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0.7, 1.35],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                />
+                <IconSymbol name="speaker.wave.2.fill" size={22} color={tint} />
+              </Pressable>
             </View>
             {card.plural && (
               <ThemedText style={styles.plural}>plural: {card.plural}</ThemedText>
@@ -196,17 +298,17 @@ export function StudySession({
               <ThemedText style={styles.exampleEn}>{card.exampleEn}</ThemedText>
             )}
             {card.notes && <ThemedText style={styles.notes}>{card.notes}</ThemedText>}
-            <Pressable
-              onPress={(e) => {
-                e.stopPropagation();
-                const text = card.exampleDe ? `${card.lemma}. ${card.exampleDe}` : card.lemma;
-                speakGerman(text);
-              }}
-              hitSlop={12}
-              style={[styles.speakBtn, { borderColor: tint }]}>
-              <IconSymbol name="speaker.wave.2.fill" size={20} color={tint} />
-              <ThemedText style={[styles.speakBtnText, { color: tint }]}>Listen</ThemedText>
-            </Pressable>
+            {card.exampleDe && (
+              <Pressable
+                onPress={(e) => playSentence(e)}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Play example sentence"
+                style={[styles.speakBtn, { borderColor: tint }]}>
+                <IconSymbol name="speaker.wave.2.fill" size={20} color={tint} />
+                <ThemedText style={[styles.speakBtnText, { color: tint }]}>Listen</ThemedText>
+              </Pressable>
+            )}
           </View>
         ) : (
           <>
@@ -331,6 +433,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   speakBtnText: { fontSize: 14, fontWeight: '600' },
+  wordSpeakBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+  },
+  wordSpeakHalo: {
+    position: 'absolute',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
   detailBtn: {
     flex: 1,
     paddingVertical: 14,
