@@ -65,8 +65,12 @@ export function useDueCards(): AsyncQueryResult<Card[]> {
  * matching photo, PLUS their reverse (`en_to_de`) siblings (matched by lemma
  * since sightings only attach to forwards).
  *
- * Daily-new-cards quota is intentionally GLOBAL — a card introduced from a
- * folder still counts against the same daily budget.
+ * Unlike the global Study queue, this query does NOT cap new cards by the
+ * daily-new-card-limit setting. Drilling into a folder is a deliberate
+ * focused-study action — surfacing every in-scope due card is the point.
+ * Resumption across visits is automatic: rated cards get scheduled forward
+ * by FSRS and don't reappear until due, so the next visit naturally picks
+ * up wherever the previous one stopped.
  */
 export function useFolderDueCards(
   parentSlug: string,
@@ -76,17 +80,6 @@ export function useFolderDueCards(
     [],
     async () => {
       const now = Date.now();
-      const limit = await getSetting<number>(
-        SettingKeys.dailyNewCardLimit,
-        DEFAULT_SETTINGS.dailyNewCardLimit,
-      );
-
-      const introducedToday = await db
-        .selectDistinct({ cardId: reviewLogs.cardId })
-        .from(reviewLogs)
-        .where(gte(reviewLogs.reviewedAt, startOfDayMs()))
-        .all();
-      const quota = Math.max(0, limit - introducedToday.length);
 
       // Build the photo-side predicate once; reused by both the in-scope
       // forward-card lookup and the new-card frequency ranking.
@@ -135,7 +128,8 @@ export function useFolderDueCards(
       // 4) New due cards within scope, ranked by FOLDER-LOCAL sighting count
       //    so the most-seen-in-this-folder words drip in first. Reverse cards
       //    have zero sightings (sightings only attach to forwards) and so
-      //    naturally sort after their forward sibling.
+      //    naturally sort after their forward sibling. No `.limit()` —
+      //    folder Study surfaces every new card in scope.
       //
       //    We use chained LEFT JOINs (not a correlated subquery) because
       //    Drizzle's `sql\`${cards.id}\`` renders as the bare column name
@@ -143,31 +137,27 @@ export function useFolderDueCards(
       //    string literal in the subquery context — the correlation
       //    silently fails. Folding the photo predicate into the join
       //    keeps Drizzle in control of all identifier qualification.
-      let newCards: Card[] = [];
-      if (quota > 0) {
-        const photoJoinPredicate = subPredicate
-          ? and(
-              eq(photos.id, cardSightings.photoId),
-              eq(photos.category, parentSlug),
-              subPredicate,
-            )
-          : and(eq(photos.id, cardSightings.photoId), eq(photos.category, parentSlug));
-        // COUNT(photos.id) — counts only when both joins matched (sighting
-        // exists AND its photo is in the targeted folder/sub-cat). Reverse
-        // cards and forwards seen only in OTHER folders end up at 0.
-        const folderFreq = sql<number>`COUNT(${photos.id})`.as('folder_freq');
-        const ranked = await db
-          .select({ card: cards, freq: folderFreq })
-          .from(cards)
-          .leftJoin(cardSightings, eq(cardSightings.cardId, cards.id))
-          .leftJoin(photos, photoJoinPredicate)
-          .where(and(inArray(cards.id, inScope), eq(cards.state, 0), lte(cards.due, now)))
-          .groupBy(cards.id)
-          .orderBy(desc(folderFreq), asc(cards.lemma))
-          .limit(quota)
-          .all();
-        newCards = ranked.map((r) => r.card);
-      }
+      const photoJoinPredicate = subPredicate
+        ? and(
+            eq(photos.id, cardSightings.photoId),
+            eq(photos.category, parentSlug),
+            subPredicate,
+          )
+        : and(eq(photos.id, cardSightings.photoId), eq(photos.category, parentSlug));
+      // COUNT(photos.id) — counts only when both joins matched (sighting
+      // exists AND its photo is in the targeted folder/sub-cat). Reverse
+      // cards and forwards seen only in OTHER folders end up at 0.
+      const folderFreq = sql<number>`COUNT(${photos.id})`.as('folder_freq');
+      const ranked = await db
+        .select({ card: cards, freq: folderFreq })
+        .from(cards)
+        .leftJoin(cardSightings, eq(cardSightings.cardId, cards.id))
+        .leftJoin(photos, photoJoinPredicate)
+        .where(and(inArray(cards.id, inScope), eq(cards.state, 0), lte(cards.due, now)))
+        .groupBy(cards.id)
+        .orderBy(desc(folderFreq), asc(cards.lemma))
+        .all();
+      const newCards = ranked.map((r) => r.card);
 
       return [...nonNew, ...newCards];
     },
