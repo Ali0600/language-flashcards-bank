@@ -29,8 +29,8 @@ const SORTS: { key: LibrarySort; label: string }[] = [
 ];
 
 const MODES: { key: ViewMode; label: string }[] = [
-  { key: 'cards', label: 'Cards' },
   { key: 'folders', label: 'Folders' },
+  { key: 'cards', label: 'Cards' },
 ];
 
 export default function LibraryScreen() {
