@@ -277,8 +277,7 @@ export function StudySession({
   // direction, the user's preference.
   const frontWord = card.translationEn ?? card.lemma;
 
-  const onRate = async (rating: ReviewRating) => {
-    if (submitting) return;
+  const fireRatingHaptic = (rating: ReviewRating) => {
     if (rating === Rating.Again) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } else if (rating === Rating.Hard) {
@@ -288,17 +287,32 @@ export function StudySession({
     } else {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
+  };
+
+  // Optimistic advance: flip to the next card SYNCHRONOUSLY, then persist
+  // the rating in the background. The previous version awaited `rateCard`
+  // before advancing — fine for the buttons (no animation between states)
+  // but ugly for the swipe path: after the fling-off completes and swipeX
+  // snaps back to 0, the previous card's BACK would sit at center for the
+  // ~30ms of the SQLite write before the next card's front rendered. The
+  // optimistic version skips that. If the DB write fails (rare for local
+  // SQLite) we log and the affected card just stays due — no visible
+  // regression because the user has already moved past it.
+  //
+  // Haptic intentionally NOT fired here: callers (rating button onPress and
+  // the swipe commit) fire `fireRatingHaptic` themselves so the feedback
+  // lines up with the gesture, not the animation end. If a future caller
+  // forgets, the rating still works — they just don't get a buzz.
+  const onRate = (rating: ReviewRating) => {
+    if (submittingRef.current) return;
+    const cardId = card.id;
     setSubmitting(true);
-    try {
-      await rateCard(card.id, rating);
-      setRevealed(false);
-      setIndex((i) => i + 1);
-      setSessionCount((n) => n + 1);
-    } catch (e) {
-      console.error('rateCard failed', e);
-    } finally {
-      setSubmitting(false);
-    }
+    setRevealed(false);
+    setIndex((i) => i + 1);
+    setSessionCount((n) => n + 1);
+    rateCard(cardId, rating)
+      .catch((e) => console.error('rateCard failed', e))
+      .finally(() => setSubmitting(false));
   };
 
   // Rebind every render so the swipe commit closes over the current `onRate`
@@ -307,15 +321,22 @@ export function StudySession({
   commitSwipeRef.current = (dir: 'left' | 'right') => {
     if (submittingRef.current) return;
     const rating: ReviewRating = dir === 'left' ? Rating.Again : Rating.Good;
-    // Fling the card off-screen in the swipe direction, then snap back to 0
-    // before submitting the rating so the next card lands centered.
+    // Fire the haptic at release time (not after the 180ms fling) so the
+    // buzz lines up with the gesture, not the animation end.
+    fireRatingHaptic(rating);
+    // Fling the card off-screen in the swipe direction, then advance to the
+    // next card before snapping translateX back to 0. Order matters:
+    // advance React state FIRST so the next render's card N+1 is queued,
+    // THEN reset swipeX — both updates batch into the same paint, so the
+    // next card's front renders at translateX:0 without the previous
+    // card's back flashing at center.
     Animated.timing(swipeX, {
       toValue: dir === 'left' ? -600 : 600,
       duration: 180,
       useNativeDriver: false,
     }).start(() => {
-      swipeX.setValue(0);
       onRate(rating);
+      swipeX.setValue(0);
     });
   };
 
@@ -496,7 +517,10 @@ export function StudySession({
                 { backgroundColor: r.color },
                 submitting && styles.btnDisabled,
               ]}
-              onPress={() => onRate(r.rating)}>
+              onPress={() => {
+                fireRatingHaptic(r.rating);
+                onRate(r.rating);
+              }}>
               <ThemedText style={styles.ratingLabel}>{r.label}</ThemedText>
             </Pressable>
           ))
