@@ -151,6 +151,22 @@ export function StudySession({
   const currentLemma = currentCard?.lemma ?? null;
   const currentCardId = currentCard?.id ?? null;
 
+  // Slide the newly-mounted card into center. After a swipe commit, the
+  // commit handler teleports swipeX to ±600 (off-screen on the OPPOSITE
+  // side from the swipe) before React advances state, so the new card
+  // mounts off-screen — this spring is the visible "slide in from the
+  // other side of the deck" animation. On initial mount and on same-card
+  // re-renders, swipeX is already 0 so the spring is a visual no-op.
+  // `swipeX` has a stable identity (from `useRef`) so it's safe in deps.
+  useEffect(() => {
+    Animated.spring(swipeX, {
+      toValue: 0,
+      useNativeDriver: false,
+      speed: 16,
+      bounciness: 0,
+    }).start();
+  }, [currentCardId, swipeX]);
+
   // Auto-play the lemma the moment the back of the card is revealed. Gated
   // by the persistent `autoPlayWord` setting (read via ref so a mid-card
   // toggle doesn't disturb in-flight audio). Tapping the inline speaker
@@ -324,19 +340,32 @@ export function StudySession({
     // Fire the haptic at release time (not after the 180ms fling) so the
     // buzz lines up with the gesture, not the animation end.
     fireRatingHaptic(rating);
-    // Fling the card off-screen in the swipe direction, then advance to the
-    // next card before snapping translateX back to 0. Order matters:
-    // advance React state FIRST so the next render's card N+1 is queued,
-    // THEN reset swipeX — both updates batch into the same paint, so the
-    // next card's front renders at translateX:0 without the previous
-    // card's back flashing at center.
+    // Fling the card off-screen in the swipe direction. After the fling
+    // ends we DELIBERATELY DO NOT reset swipeX to 0 here. Two reasons:
+    //
+    //   1. `swipeX.setValue(0)` fires synchronously via `setNativeProps`,
+    //      which pushes the new transform directly to native, bypassing
+    //      React's reconciler. The old card's children are still in the
+    //      native view at that moment (React hasn't committed the state
+    //      advance yet), so the OLD card jumps to translateX:0 and sits
+    //      at center until React's batched commit catches up — that's the
+    //      "previous card visible for a beat before the next one shows"
+    //      glitch the user reported.
+    //
+    //   2. Instead, we advance state AND teleport swipeX to the OPPOSITE
+    //      side off-screen. Both happen before React commits, so the
+    //      transitional frame has the old card off-screen (invisible).
+    //      The next card mounts off-screen too. The `useEffect` on
+    //      `currentCardId` then springs swipeX back to 0 — a real
+    //      slide-in from the opposite side, like the next card in a deck
+    //      rolling into view.
     Animated.timing(swipeX, {
       toValue: dir === 'left' ? -600 : 600,
       duration: 180,
       useNativeDriver: false,
     }).start(() => {
       onRate(rating);
-      swipeX.setValue(0);
+      swipeX.setValue(dir === 'left' ? 600 : -600);
     });
   };
 
