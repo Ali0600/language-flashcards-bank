@@ -1,6 +1,7 @@
 import { useAsyncQuery } from '@/hooks/use-async-query';
 import {
   getCardsForSubCategory,
+  getCategoryTotals,
   getSubCategoriesFor,
   getSubCategorySummaries,
   type SubCategorySummary,
@@ -21,6 +22,19 @@ export function useSubCategorySummaries(parentSlug: string) {
   return useAsyncQuery<SubCategorySummary[]>(
     [],
     () => getSubCategorySummaries(parentSlug),
+    [parentSlug],
+  );
+}
+
+/**
+ * Deduplicated photo + card totals for the entire parent. Powers the "All"
+ * tile shown at the top of the sub-cat grid when there's more than one
+ * sub-cat (or sub-cat + Uncategorized).
+ */
+export function useCategoryTotals(parentSlug: string) {
+  return useAsyncQuery<{ photoCount: number; cardCount: number }>(
+    { photoCount: 0, cardCount: 0 },
+    () => getCategoryTotals(parentSlug),
     [parentSlug],
   );
 }

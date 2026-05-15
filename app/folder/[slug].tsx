@@ -21,6 +21,7 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useFolderCards, type FolderCard } from '@/hooks/use-folders';
 import {
+  useCategoryTotals,
   useSubCategoryCards,
   useSubCategorySummaries,
 } from '@/hooks/use-subcategories';
@@ -44,22 +45,40 @@ export default function FolderScreen() {
 
   const parentSupportsSubCats = hasSubCategories(slug);
   // sub param present means we're in mode #3 (card list filtered by sub).
-  // The literal string 'null' means the Uncategorized bucket.
+  // Sentinel values:
+  //   'null' — Uncategorized bucket within this parent
+  //   'all'  — all cards across the parent regardless of sub-cat
+  // Otherwise the param is a specific sub-category id.
   const subFilterActive = parentSupportsSubCats && typeof sub === 'string';
-  const subId: string | null | undefined = subFilterActive
-    ? sub === 'null'
-      ? null
-      : sub
-    : undefined;
 
   if (parentSupportsSubCats && !subFilterActive) {
     return <SubCategoryGrid slug={slug} tint={tint} />;
   }
 
+  // Translate the query param into the subId shape `CardsList` expects.
+  // `false` = no sub-cat filter (use useFolderCards). string = specific id.
+  // null = the Uncategorized bucket.
+  let subId: false | string | null;
+  let viewMode: 'flat' | 'all' | 'one' | 'uncat' = 'flat';
+  if (!subFilterActive) {
+    subId = false;
+    viewMode = 'flat';
+  } else if (sub === 'all') {
+    subId = false;
+    viewMode = 'all';
+  } else if (sub === 'null') {
+    subId = null;
+    viewMode = 'uncat';
+  } else {
+    subId = sub as string;
+    viewMode = 'one';
+  }
+
   return (
     <CardsList
       slug={slug}
-      subId={subId === undefined ? false : subId}
+      subId={subId}
+      viewMode={viewMode}
       tint={tint}
       onPressCard={(cardId) => router.push(`/card/${cardId}`)}
     />
@@ -67,22 +86,35 @@ export default function FolderScreen() {
 }
 
 /**
- * Mode 2: grid of sub-category tiles for a parent like `screenshots`.
+ * Mode 2: grid of sub-category tiles for a parent like `screenshots`. When
+ * there's more than one sub-cat (or a sub-cat plus an Uncategorized bucket),
+ * we prepend an "All" tile that shows every card in the parent regardless of
+ * its sub-cat. Card count on the All tile is the *deduplicated* total — a
+ * card seen across two sub-cats only counts once.
  */
 function SubCategoryGrid({ slug, tint }: { slug: string; tint: string }) {
   const router = useRouter();
   const { loading, data, error, refetch } = useSubCategorySummaries(slug);
+  const totalsQuery = useCategoryTotals(slug);
   const [refreshing, setRefreshing] = useState(false);
   const label = folderLabel(slug);
 
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      await refetch();
+      await Promise.all([refetch(), totalsQuery.refetch()]);
     } finally {
       setRefreshing(false);
     }
   };
+
+  // Sentinel "All" pseudo-item for the FlatList. Real items are
+  // SubCategorySummary; the All tile is rendered when there's more than one
+  // bucket so it isn't redundant.
+  type GridItem = { kind: 'all' } | { kind: 'sub'; summary: SubCategorySummary };
+  const gridItems: GridItem[] = [];
+  if (data.length > 1) gridItems.push({ kind: 'all' });
+  for (const s of data) gridItems.push({ kind: 'sub', summary: s });
 
   return (
     <ThemedView style={styles.container}>
@@ -103,31 +135,69 @@ function SubCategoryGrid({ slug, tint }: { slug: string; tint: string }) {
         </ThemedText>
       ) : (
         <FlatList
-          data={data}
-          keyExtractor={(s) => (s.subCategory?.id ?? '__uncat__')}
+          data={gridItems}
+          keyExtractor={(item) =>
+            item.kind === 'all' ? '__all__' : (item.summary.subCategory?.id ?? '__uncat__')
+          }
           numColumns={2}
           columnWrapperStyle={styles.folderRow}
           contentContainerStyle={styles.folderGrid}
-          renderItem={({ item }) => (
-            <SubCategoryTile
-              item={item}
-              parentSlug={slug}
-              tint={tint}
-              onPress={() => {
-                const target =
-                  item.subCategory === null
-                    ? `/folder/${slug}?sub=null`
-                    : `/folder/${slug}?sub=${item.subCategory.id}`;
-                router.push(target as never);
-              }}
-            />
-          )}
+          renderItem={({ item }) =>
+            item.kind === 'all' ? (
+              <AllTile
+                cardCount={totalsQuery.data.cardCount}
+                tint={tint}
+                onPress={() => router.push(`/folder/${slug}?sub=all` as never)}
+              />
+            ) : (
+              <SubCategoryTile
+                item={item.summary}
+                parentSlug={slug}
+                tint={tint}
+                onPress={() => {
+                  const target =
+                    item.summary.subCategory === null
+                      ? `/folder/${slug}?sub=null`
+                      : `/folder/${slug}?sub=${item.summary.subCategory.id}`;
+                  router.push(target as never);
+                }}
+              />
+            )
+          }
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={tint} />
           }
         />
       )}
     </ThemedView>
+  );
+}
+
+function AllTile({
+  cardCount,
+  tint,
+  onPress,
+}: {
+  cardCount: number;
+  tint: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`All apps, ${cardCount} card${cardCount === 1 ? '' : 's'}`}
+      style={[styles.folderTile, { borderColor: tint }]}
+      onPress={onPress}>
+      <View style={[styles.folderIcon, { backgroundColor: tint + '22' }]}>
+        <IconSymbol name="rectangle.stack.fill" size={26} color={tint} />
+      </View>
+      <ThemedText type="defaultSemiBold" style={styles.folderLabel} numberOfLines={2}>
+        All apps
+      </ThemedText>
+      <ThemedText style={styles.folderCount}>
+        {cardCount} card{cardCount === 1 ? '' : 's'}
+      </ThemedText>
+    </Pressable>
   );
 }
 
@@ -168,18 +238,20 @@ function SubCategoryTile({
 
 /**
  * Modes 1 + 3: flat card list. When `subId` is `false`, the parent has no
- * sub-categories and we use the original `useFolderCards`. When it's a string
- * or null, we use the sub-cat-aware query.
+ * sub-categories OR we're showing "All" — both use `useFolderCards`. When
+ * it's a string or null, we use the sub-cat-aware query.
  */
 function CardsList({
   slug,
   subId,
+  viewMode,
   tint,
   onPressCard,
 }: {
   slug: string;
-  /** `false` = no sub-cat filter (parent without sub-cats). `string | null` = filter active. */
+  /** `false` = no sub-cat filter (flat or all-mode). `string | null` = filter active. */
   subId: false | string | null;
+  viewMode: 'flat' | 'all' | 'one' | 'uncat';
   tint: string;
   onPressCard: (cardId: string) => void;
 }) {
@@ -191,12 +263,20 @@ function CardsList({
   const [refreshing, setRefreshing] = useState(false);
 
   const label = (() => {
-    if (!usingSubFilter) return folderLabel(slug);
-    if (subId === null) return `${folderLabel(slug)} · Uncategorized`;
-    // For named sub-cats we don't have the name here without an extra fetch;
-    // the items in `data` don't carry it. Fall back to a generic header — the
-    // user came from the sub-cat tile so they know which one they tapped.
-    return folderLabel(slug);
+    switch (viewMode) {
+      case 'flat':
+        return folderLabel(slug);
+      case 'all':
+        return `${folderLabel(slug)} · All apps`;
+      case 'uncat':
+        return `${folderLabel(slug)} · Uncategorized`;
+      case 'one':
+        // For named sub-cats we don't have the name here without an extra
+        // fetch; the items in `data` don't carry it. Fall back to a generic
+        // header — the user came from the sub-cat tile so they know which one
+        // they tapped.
+        return folderLabel(slug);
+    }
   })();
 
   const onRefresh = async () => {

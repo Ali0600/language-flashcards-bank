@@ -186,6 +186,34 @@ export async function getSubCategorySummaries(parentSlug: string): Promise<SubCa
 }
 
 /**
+ * Deduplicated totals across an entire parent category (regardless of
+ * sub-category). Used by the "All" tile at the top of the sub-cat grid so the
+ * count is the same number the user sees after tapping in — summing the
+ * per-sub-cat card counts would double-count cards that appear under multiple
+ * sub-cats.
+ */
+export async function getCategoryTotals(
+  parentSlug: string,
+): Promise<{ photoCount: number; cardCount: number }> {
+  const photoRows = await db
+    .select({ n: count() })
+    .from(photos)
+    .where(eq(photos.category, parentSlug))
+    .all();
+  const cardRows = await db
+    .select({ n: sql<number>`COUNT(DISTINCT ${cards.id})` })
+    .from(cards)
+    .innerJoin(cardSightings, eq(cardSightings.cardId, cards.id))
+    .innerJoin(photos, eq(photos.id, cardSightings.photoId))
+    .where(and(eq(photos.category, parentSlug), eq(cards.direction, 'de_to_en')))
+    .all();
+  return {
+    photoCount: photoRows[0]?.n ?? 0,
+    cardCount: cardRows[0]?.n ?? 0,
+  };
+}
+
+/**
  * Cards seen in photos under (parentSlug, subId) — for the
  * `/folder/[slug]?sub=...` drill-down. `subId === null` selects the
  * "Uncategorized within this parent" bucket.
