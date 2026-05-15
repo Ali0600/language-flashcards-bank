@@ -1,8 +1,8 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, count, eq, inArray } from 'drizzle-orm';
 import uuid from 'react-native-uuid';
 
 import { db } from '@/db/client';
-import { cards, type Card, type NewCard } from '@/db/schema';
+import { cardSightings, cards, reviewLogs, type Card, type NewCard } from '@/db/schema';
 import type { CardDirection } from '@/lib/types';
 import { emptyState } from './scheduler';
 
@@ -24,6 +24,37 @@ export async function updateCard(cardId: string, updates: Partial<EditableCardFi
 
 export async function deleteCard(cardId: string): Promise<void> {
   await db.delete(cards).where(eq(cards.id, cardId));
+}
+
+/**
+ * Count of cards currently in the library (both directions). Used by the
+ * Settings "Delete all cards" affordance to show the actual number in the
+ * confirmation prompt.
+ */
+export async function getCardCount(): Promise<number> {
+  const rows = await db.select({ n: count() }).from(cards).all();
+  return rows[0]?.n ?? 0;
+}
+
+/**
+ * Nuke every card, sighting, and review-log row in one transaction. Photos,
+ * settings, ignored words, and sub-categories are intentionally left alone —
+ * a user clearing the deck doesn't want to also lose their captured photos
+ * (they can re-derive cards from them) or their preferences.
+ *
+ * Ordering: children first (review_logs, sightings) then parents (cards) so
+ * the deletes succeed regardless of whether FK enforcement is on for this
+ * op-sqlite connection.
+ */
+export async function deleteAllCards(): Promise<{ deletedCount: number }> {
+  return db.transaction(async (tx) => {
+    const before = await tx.select({ n: count() }).from(cards).all();
+    const deletedCount = before[0]?.n ?? 0;
+    await tx.delete(reviewLogs);
+    await tx.delete(cardSightings);
+    await tx.delete(cards);
+    return { deletedCount };
+  });
 }
 
 export function oppositeDirection(d: CardDirection): CardDirection {

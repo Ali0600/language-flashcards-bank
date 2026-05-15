@@ -12,7 +12,7 @@ import {
   useDailyNewCardLimit,
   usePlayInSilentMode,
 } from '@/hooks/use-settings';
-import { bulkCreateReverses } from '@/services/card';
+import { bulkCreateReverses, deleteAllCards, getCardCount } from '@/services/card';
 
 const STEPS = [0, 5, 10, 15, 20, 30, 50];
 
@@ -25,6 +25,52 @@ export default function SettingsScreen() {
   const { enabled: playInSilentMode, setEnabled: setPlayInSilentMode } = usePlayInSilentMode();
   const { enabled: autoReverse, setEnabled: setAutoReverse } = useAutoCreateReverseCards();
   const [generatingReverses, setGeneratingReverses] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+
+  const onDeleteAllCards = async () => {
+    if (deletingAll) return;
+    // Pull the current count so the confirmation prompt shows the actual
+    // scope of the destruction — single-tap "delete all" with no number is
+    // too easy to fire by accident.
+    let total = 0;
+    try {
+      total = await getCardCount();
+    } catch (e) {
+      Alert.alert('Could not read card count', e instanceof Error ? e.message : String(e));
+      return;
+    }
+    if (total === 0) {
+      Alert.alert('No cards to delete', 'Your library is already empty.');
+      return;
+    }
+    Alert.alert(
+      `Delete all ${total} card${total === 1 ? '' : 's'}?`,
+      'This permanently removes every flashcard, its review history, and its sightings. Photos, your ignore list, and settings are kept. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete all',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingAll(true);
+            try {
+              const { deletedCount } = await deleteAllCards();
+              Alert.alert(
+                'Library cleared',
+                deletedCount === 0
+                  ? 'No cards were present.'
+                  : `Deleted ${deletedCount} card${deletedCount === 1 ? '' : 's'}.`,
+              );
+            } catch (e) {
+              Alert.alert('Delete failed', e instanceof Error ? e.message : String(e));
+            } finally {
+              setDeletingAll(false);
+            }
+          },
+        },
+      ],
+    );
+  };
 
   const onGenerateAllReverses = () => {
     Alert.alert(
@@ -175,6 +221,22 @@ export default function SettingsScreen() {
             <ThemedText style={{ color: tint, fontWeight: '600' }}>Manage ignored words</ThemedText>
           </Pressable>
         </View>
+
+        <View style={styles.section}>
+          <ThemedText type="subtitle">Danger zone</ThemedText>
+          <ThemedText style={styles.help}>
+            Permanently delete every flashcard along with its review history and sightings.
+            Photos, ignored words, and your settings are kept.
+          </ThemedText>
+          <Pressable
+            onPress={onDeleteAllCards}
+            disabled={deletingAll}
+            style={[styles.dangerBtn, deletingAll && styles.linkBtnDisabled]}>
+            <ThemedText style={styles.dangerBtnText}>
+              {deletingAll ? 'Deleting…' : 'Delete all cards'}
+            </ThemedText>
+          </Pressable>
+        </View>
       </ScrollView>
 
       <Pressable style={[styles.doneBtn, { backgroundColor: tint }]} onPress={() => router.back()}>
@@ -240,4 +302,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   linkBtnDisabled: { opacity: 0.4 },
+  dangerBtn: {
+    marginTop: 8,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E74C3C',
+    alignItems: 'center',
+  },
+  dangerBtnText: { color: '#E74C3C', fontWeight: '600' },
 });
