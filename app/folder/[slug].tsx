@@ -42,6 +42,7 @@ export default function FolderScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const tint = Colors[colorScheme].tint;
+  const onTint = Colors[colorScheme].background;
 
   const parentSupportsSubCats = hasSubCategories(slug);
   // sub param present means we're in mode #3 (card list filtered by sub).
@@ -74,13 +75,22 @@ export default function FolderScreen() {
     viewMode = 'one';
   }
 
+  // Study button mirrors the folder URL so the underlying scope is identical.
+  // `sub=all` translates to "no sub-cat filter" in `useFolderDueCards` too.
+  const studyPath = (() => {
+    if (typeof sub === 'string') return `/study-folder/${slug}?sub=${sub}`;
+    return `/study-folder/${slug}`;
+  })();
+
   return (
     <CardsList
       slug={slug}
       subId={subId}
       viewMode={viewMode}
       tint={tint}
+      onTint={onTint}
       onPressCard={(cardId) => router.push(`/card/${cardId}`)}
+      onStudy={() => router.push(studyPath as never)}
     />
   );
 }
@@ -246,14 +256,18 @@ function CardsList({
   subId,
   viewMode,
   tint,
+  onTint,
   onPressCard,
+  onStudy,
 }: {
   slug: string;
   /** `false` = no sub-cat filter (flat or all-mode). `string | null` = filter active. */
   subId: false | string | null;
   viewMode: 'flat' | 'all' | 'one' | 'uncat';
   tint: string;
+  onTint: string;
   onPressCard: (cardId: string) => void;
+  onStudy: () => void;
 }) {
   const flat = useFolderCards(slug);
   const subFiltered = useSubCategoryCards(slug, subId === false ? null : subId);
@@ -318,7 +332,21 @@ function CardsList({
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={tint} />
           }
+          // Leave room for the floating Study button so the last row isn't
+          // hidden behind it.
+          contentContainerStyle={styles.cardsListPad}
         />
+      )}
+
+      {cards.length > 0 && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Study cards in ${label}`}
+          onPress={onStudy}
+          style={[styles.studyBtn, { backgroundColor: tint }]}>
+          <IconSymbol name="sparkles" size={18} color={onTint} />
+          <ThemedText style={[styles.studyBtnText, { color: onTint }]}>Study</ThemedText>
+        </Pressable>
       )}
     </ThemedView>
   );
@@ -393,4 +421,23 @@ const styles = StyleSheet.create({
   },
   folderLabel: { fontSize: 15, lineHeight: 20 },
   folderCount: { fontSize: 13, opacity: 0.6 },
+  cardsListPad: { paddingBottom: 96 },
+  studyBtn: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  studyBtnText: { fontWeight: '600', fontSize: 16 },
 });

@@ -53,6 +53,121 @@ export function useDueCards(): AsyncQueryResult<Card[]> {
   });
 }
 
+/**
+ * Folder-scoped due-cards query for `/study-folder/[slug]`.
+ *
+ * - `parentSlug` is required; `subId` may be:
+ *     - `undefined` → no sub-cat filter (parent without sub-cats, or "All apps" mode)
+ *     - `null`      → photos in this parent with `sub_category_id IS NULL` (Uncategorized bucket)
+ *     - `string`    → a specific sub-cat row id
+ *
+ * Cards in scope: forward (`de_to_en`) cards with at least one sighting in a
+ * matching photo, PLUS their reverse (`en_to_de`) siblings (matched by lemma
+ * since sightings only attach to forwards).
+ *
+ * Daily-new-cards quota is intentionally GLOBAL — a card introduced from a
+ * folder still counts against the same daily budget.
+ */
+export function useFolderDueCards(
+  parentSlug: string,
+  subId?: string | null,
+): AsyncQueryResult<Card[]> {
+  return useAsyncQuery<Card[]>(
+    [],
+    async () => {
+      const now = Date.now();
+      const limit = await getSetting<number>(
+        SettingKeys.dailyNewCardLimit,
+        DEFAULT_SETTINGS.dailyNewCardLimit,
+      );
+
+      const introducedToday = await db
+        .selectDistinct({ cardId: reviewLogs.cardId })
+        .from(reviewLogs)
+        .where(gte(reviewLogs.reviewedAt, startOfDayMs()))
+        .all();
+      const quota = Math.max(0, limit - introducedToday.length);
+
+      // Build the photo-side predicate once; reused by both the in-scope
+      // forward-card lookup and the new-card frequency ranking.
+      const subPredicate =
+        subId === undefined
+          ? undefined
+          : subId === null
+            ? isNull(photos.subCategoryId)
+            : eq(photos.subCategoryId, subId);
+      const photoWhere = subPredicate
+        ? and(eq(photos.category, parentSlug), subPredicate)
+        : eq(photos.category, parentSlug);
+
+      // 1) Distinct forward cards with a sighting in matching photos.
+      const fwdRows = await db
+        .selectDistinct({ id: cards.id, lemma: cards.lemma })
+        .from(cards)
+        .innerJoin(cardSightings, eq(cardSightings.cardId, cards.id))
+        .innerJoin(photos, eq(photos.id, cardSightings.photoId))
+        .where(and(eq(cards.direction, 'de_to_en'), photoWhere))
+        .all();
+
+      if (fwdRows.length === 0) return [];
+
+      const inScopeIds = new Set(fwdRows.map((r) => r.id));
+      const lemmas = Array.from(new Set(fwdRows.map((r) => r.lemma)));
+
+      // 2) Reverse siblings of those forwards (same lemma, opposite direction).
+      const reverseRows = await db
+        .select({ id: cards.id })
+        .from(cards)
+        .where(and(inArray(cards.lemma, lemmas), eq(cards.direction, 'en_to_de')))
+        .all();
+      for (const r of reverseRows) inScopeIds.add(r.id);
+
+      const inScope = Array.from(inScopeIds);
+
+      // 3) Non-new due cards within scope.
+      const nonNew = await db
+        .select()
+        .from(cards)
+        .where(and(inArray(cards.id, inScope), lte(cards.due, now), ne(cards.state, 0)))
+        .orderBy(asc(cards.due))
+        .all();
+
+      // 4) New due cards within scope, ranked by FOLDER-LOCAL sighting count
+      //    so the most-seen-in-this-folder words drip in first. Reverse cards
+      //    have zero sightings (sightings only attach to forwards) and so
+      //    naturally sort after their forward sibling.
+      let newCards: Card[] = [];
+      if (quota > 0) {
+        const folderFreq = sql<number>`(
+          SELECT COUNT(*)
+          FROM ${cardSightings} s
+          JOIN ${photos} p ON p.id = s.photo_id
+          WHERE s.card_id = ${cards.id}
+            AND p.category = ${parentSlug}
+            ${
+              subPredicate === undefined
+                ? sql``
+                : subId === null
+                  ? sql`AND p.sub_category_id IS NULL`
+                  : sql`AND p.sub_category_id = ${subId}`
+            }
+        )`.as('folder_freq');
+        const ranked = await db
+          .select({ card: cards, freq: folderFreq })
+          .from(cards)
+          .where(and(inArray(cards.id, inScope), eq(cards.state, 0), lte(cards.due, now)))
+          .orderBy(desc(folderFreq), asc(cards.lemma))
+          .limit(quota)
+          .all();
+        newCards = ranked.map((r) => r.card);
+      }
+
+      return [...nonNew, ...newCards];
+    },
+    [parentSlug, subId ?? '__none__'],
+  );
+}
+
 export type LibrarySort = 'alphabetical' | 'due' | 'frequency';
 
 export type CardWithFreq = Card & { sightingCount: number };

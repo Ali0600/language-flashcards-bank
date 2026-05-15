@@ -14,6 +14,7 @@ iOS app built with React Native + Expo. Snap a picture of food packaging, a post
 - **Auto-categorized folders, with recategorize.** Each photo is classified into one of 12 scene categories (food packaging, cooking, household, signs, transport, health, documents, clothing, electronics, outdoor, screenshots, other). Misclassified? Open the photo and pick a different folder. Library tab can group cards by folder or filter the flat Cards view by folder.
 - **Screenshots get app sub-folders.** When a photo lands in the Screenshots category, Gemini also identifies the app (Instagram, Twitter, Discord, etc.). The capture wizard gains a third step where you can confirm the suggestion, pick a different existing app, or skip. The Library > Folders > Screenshots tile drills into a grid of app sub-folders.
 - **FSRS-6 spaced repetition.** Real algorithm via [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs), not a homegrown SM-2.
+- **Study by folder or sub-folder.** From any folder (or app sub-folder), tap **Study** to review only that slice. Cards share their FSRS state with the global Study tab — folder Study is just a filter, not a separate schedule.
 - **Production-recall study direction.** Front shows the English translation; tap reveals the German lemma + gender + example sentences. The harder, more effective direction by default.
 - **Reverse cards (EN → DE) — optional.** Toggle in Settings to auto-create an `en_to_de` sibling for every new card, or bulk-backfill all existing cards. Each direction has its own independent FSRS state.
 - **Notes / mnemonics per card.** Free-text field on the card detail screen, surfaced on the study back.
@@ -101,6 +102,7 @@ app/photo/[id].tsx       → Full-screen photo viewer (modal) with bbox overlays
 app/scan/[id].tsx        → Post-capture results with per-word checkboxes
 app/scan-category/[id].tsx     → Step 2 of capture wizard: confirm/change folder
 app/scan-subcategory/[id].tsx  → Step 3 of capture wizard (Screenshots only): pick app
+app/study-folder/[slug].tsx    → Per-folder Study (same UI as global Study, filtered queue)
 app/settings.tsx         → Settings (modal)
 app/ignored.tsx          → Ignored words list (modal)
 ```
