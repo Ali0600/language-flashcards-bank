@@ -81,17 +81,18 @@ export function StudySession({
   const autoPlayRef = useRef(autoPlayWord);
   autoPlayRef.current = autoPlayWord;
 
-  // Swipe-to-rate (revealed card only). Drag left for "Still Learning"
-  // (=Again) or right for "Know" (=Good). The 4 rating buttons below remain
-  // available for finer-grained ratings (Hard / Easy).
+  // Swipe-to-rate (either face of the card). Drag left for "Still Learning"
+  // (=Again) or right for "Know" (=Good). The 4 rating buttons (which only
+  // appear on the back) remain available for finer-grained ratings
+  // (Hard / Easy). Swiping on the FRONT is a deliberate shortcut: the user
+  // is saying "I know this without needing to flip" (right) or "I clearly
+  // don't recall this" (left) — both are valid recall signals.
   //
   // `panResponder` is created once via useMemo (stable identity so the gesture
   // system doesn't reattach handlers every render) and routes commits through
   // `commitSwipeRef`, which is reassigned every render so it captures the
   // current `onRate` closure (which in turn closes over the current card).
   const swipeX = useRef(new Animated.Value(0)).current;
-  const revealedRef = useRef(revealed);
-  revealedRef.current = revealed;
   const submittingRef = useRef(submitting);
   submittingRef.current = submitting;
   const commitSwipeRef = useRef<(dir: 'left' | 'right') => void>(() => {});
@@ -101,12 +102,11 @@ export function StudySession({
       PanResponder.create({
         // Don't claim on touch start — let taps through to the inner Pressable.
         onStartShouldSetPanResponder: () => false,
-        // Claim only when the move is clearly horizontal AND we're past
-        // reveal AND not currently submitting a previous rating. The
-        // horizontal-vs-vertical threshold (1.5x) lets vertical scroll
-        // surfaces (e.g. notes that overflow) keep working if added later.
+        // Claim only when the move is clearly horizontal AND we're not
+        // currently submitting a previous rating. The horizontal-vs-vertical
+        // threshold (1.5x) lets vertical scroll surfaces (e.g. notes that
+        // overflow) keep working if added later.
         onMoveShouldSetPanResponder: (_, g) =>
-          revealedRef.current &&
           !submittingRef.current &&
           Math.abs(g.dx) > 8 &&
           Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
