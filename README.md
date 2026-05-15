@@ -20,7 +20,7 @@ iOS app built with React Native + Expo. Snap a picture of food packaging, a post
 - **Notes / mnemonics per card.** Free-text field on the card detail screen, surfaced on the study back.
 - **Frequency-weighted new cards.** When new cards drip into your study queue, the ones you've actually seen most often in photos come first.
 - **Daily new-card limit.** Tunable in Settings (default 10/day) so a single 30-word photo doesn't bury you.
-- **German pronunciation.** Tap to hear the word and an example sentence via iOS's native speech synthesizer. Plays through the silent switch by default (toggleable in Settings).
+- **German pronunciation.** Flashcards auto-play the German word the moment you flip them (toggleable in Settings, with a quick-toggle speaker icon in the study header). A small inline speaker next to the lemma replays it on tap, with a pulsing halo while audio is playing. A separate Listen button below plays the example sentence on demand. Plays through the silent switch by default.
 - **Pull-to-refresh** everywhere it makes sense.
 - **CSV export** of every card with sighting counts and FSRS state — shareable via the iOS share sheet.
 - **Stats.** Card counts by state (New / Learning / Review / Relearning), total reviews, reviews today, photos taken, most-sighted lemmas, plus a 12-week GitHub-style activity heatmap with current/longest streak counters.
