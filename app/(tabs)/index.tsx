@@ -39,7 +39,9 @@ export default function LibraryScreen() {
   const tint = Colors[colorScheme].tint;
   const textColor = Colors[colorScheme].text;
   const bgColor = Colors[colorScheme].background;
-  const [mode, setMode] = useState<ViewMode>('cards');
+  // Default to the Folders view — the Cards list is overwhelming on first
+  // open, while Folders gives a high-level sense of what's been captured.
+  const [mode, setMode] = useState<ViewMode>('folders');
   const [sort, setSort] = useState<LibrarySort>('frequency');
   const [query, setQuery] = useState('');
   const [folderFilter, setFolderFilter] = useState<AnyFolderSlug | null>(null);
