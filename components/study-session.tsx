@@ -1,9 +1,10 @@
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -79,6 +80,61 @@ export function StudySession({
   const { enabled: autoPlayWord, setEnabled: setAutoPlayWord } = useAutoPlayWord();
   const autoPlayRef = useRef(autoPlayWord);
   autoPlayRef.current = autoPlayWord;
+
+  // Swipe-to-rate (revealed card only). Drag left for "Still Learning"
+  // (=Again) or right for "Know" (=Good). The 4 rating buttons below remain
+  // available for finer-grained ratings (Hard / Easy).
+  //
+  // `panResponder` is created once via useMemo (stable identity so the gesture
+  // system doesn't reattach handlers every render) and routes commits through
+  // `commitSwipeRef`, which is reassigned every render so it captures the
+  // current `onRate` closure (which in turn closes over the current card).
+  const swipeX = useRef(new Animated.Value(0)).current;
+  const revealedRef = useRef(revealed);
+  revealedRef.current = revealed;
+  const submittingRef = useRef(submitting);
+  submittingRef.current = submitting;
+  const commitSwipeRef = useRef<(dir: 'left' | 'right') => void>(() => {});
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        // Don't claim on touch start — let taps through to the inner Pressable.
+        onStartShouldSetPanResponder: () => false,
+        // Claim only when the move is clearly horizontal AND we're past
+        // reveal AND not currently submitting a previous rating. The
+        // horizontal-vs-vertical threshold (1.5x) lets vertical scroll
+        // surfaces (e.g. notes that overflow) keep working if added later.
+        onMoveShouldSetPanResponder: (_, g) =>
+          revealedRef.current &&
+          !submittingRef.current &&
+          Math.abs(g.dx) > 8 &&
+          Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+        onPanResponderGrant: () => {
+          swipeX.setValue(0);
+        },
+        // PanResponder events originate in JS, so the move animation must
+        // use the JS driver. The derived overlay opacity + card rotate are
+        // also JS-driven for consistency — fine perf-wise at one card.
+        onPanResponderMove: Animated.event([null, { dx: swipeX }], {
+          useNativeDriver: false,
+        }),
+        onPanResponderRelease: (_, g) => {
+          const THRESHOLD = 120;
+          if (g.dx > THRESHOLD) commitSwipeRef.current('right');
+          else if (g.dx < -THRESHOLD) commitSwipeRef.current('left');
+          else
+            Animated.spring(swipeX, {
+              toValue: 0,
+              useNativeDriver: false,
+            }).start();
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(swipeX, { toValue: 0, useNativeDriver: false }).start();
+        },
+      }),
+    [swipeX],
+  );
 
   // Snapshot the queue once, the first time we have data. Re-rendering
   // mid-session (a tab switch causing a re-query) must NOT reshuffle order.
@@ -245,6 +301,24 @@ export function StudySession({
     }
   };
 
+  // Rebind every render so the swipe commit closes over the current `onRate`
+  // (which closes over the current card). The PanResponder calls through this
+  // ref so its stable identity isn't a problem.
+  commitSwipeRef.current = (dir: 'left' | 'right') => {
+    if (submittingRef.current) return;
+    const rating: ReviewRating = dir === 'left' ? Rating.Again : Rating.Good;
+    // Fling the card off-screen in the swipe direction, then snap back to 0
+    // before submitting the rating so the next card lands centered.
+    Animated.timing(swipeX, {
+      toValue: dir === 'left' ? -600 : 600,
+      duration: 180,
+      useNativeDriver: false,
+    }).start(() => {
+      swipeX.setValue(0);
+      onRate(rating);
+    });
+  };
+
   return (
     <ThemedView style={styles.container}>
       {suggested && suggested.length > 0 && (
@@ -279,77 +353,135 @@ export function StudySession({
         </View>
       </View>
 
-      <Pressable
-        style={[styles.card, { borderColor: tint }]}
-        onPress={() => setRevealed((r) => !r)}>
-        {revealed ? (
-          <View style={styles.back}>
-            <View style={styles.lemmaRow}>
-              {card.gender && <ThemedText style={styles.gender}>{card.gender}</ThemedText>}
-              <ThemedText type="title" style={styles.lemma}>
-                {card.lemma}
-              </ThemedText>
-              <Pressable
-                onPress={(e) => replayWord(e)}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel={`Replay pronunciation of ${card.lemma}`}
-                style={styles.wordSpeakBtn}>
-                <Animated.View
-                  pointerEvents="none"
-                  style={[
-                    styles.wordSpeakHalo,
-                    { backgroundColor: tint },
-                    {
-                      opacity: haloAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0, 0.35],
-                      }),
-                      transform: [
-                        {
-                          scale: haloAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0.7, 1.35],
-                          }),
-                        },
-                      ],
-                    },
-                  ]}
-                />
-                <IconSymbol name="speaker.wave.2.fill" size={22} color={tint} />
-              </Pressable>
+      <Animated.View
+        style={[
+          styles.card,
+          {
+            borderColor: tint,
+            transform: [
+              { translateX: swipeX },
+              {
+                // Slight Tinder-style tilt so the swipe feels tactile.
+                rotate: swipeX.interpolate({
+                  inputRange: [-300, 0, 300],
+                  outputRange: ['-8deg', '0deg', '8deg'],
+                  extrapolate: 'clamp',
+                }),
+              },
+            ],
+          },
+        ]}
+        {...panResponder.panHandlers}>
+        <Pressable
+          style={styles.cardTapTarget}
+          onPress={() => setRevealed((r) => !r)}>
+          {revealed ? (
+            <View style={styles.back}>
+              <View style={styles.lemmaRow}>
+                {card.gender && <ThemedText style={styles.gender}>{card.gender}</ThemedText>}
+                <ThemedText type="title" style={styles.lemma}>
+                  {card.lemma}
+                </ThemedText>
+                <Pressable
+                  onPress={(e) => replayWord(e)}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Replay pronunciation of ${card.lemma}`}
+                  style={styles.wordSpeakBtn}>
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[
+                      styles.wordSpeakHalo,
+                      { backgroundColor: tint },
+                      {
+                        opacity: haloAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0, 0.35],
+                        }),
+                        transform: [
+                          {
+                            scale: haloAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0.7, 1.35],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  />
+                  <IconSymbol name="speaker.wave.2.fill" size={22} color={tint} />
+                </Pressable>
+              </View>
+              {card.plural && (
+                <ThemedText style={styles.plural}>plural: {card.plural}</ThemedText>
+              )}
+              {card.exampleDe && (
+                <ThemedText style={styles.example}>{card.exampleDe}</ThemedText>
+              )}
+              {card.exampleEn && (
+                <ThemedText style={styles.exampleEn}>{card.exampleEn}</ThemedText>
+              )}
+              {card.notes && <ThemedText style={styles.notes}>{card.notes}</ThemedText>}
+              {card.exampleDe && (
+                <Pressable
+                  onPress={(e) => playSentence(e)}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="Play example sentence"
+                  style={[styles.speakBtn, { borderColor: tint }]}>
+                  <IconSymbol name="speaker.wave.2.fill" size={20} color={tint} />
+                  <ThemedText style={[styles.speakBtnText, { color: tint }]}>Listen</ThemedText>
+                </Pressable>
+              )}
             </View>
-            {card.plural && (
-              <ThemedText style={styles.plural}>plural: {card.plural}</ThemedText>
-            )}
-            {card.exampleDe && (
-              <ThemedText style={styles.example}>{card.exampleDe}</ThemedText>
-            )}
-            {card.exampleEn && (
-              <ThemedText style={styles.exampleEn}>{card.exampleEn}</ThemedText>
-            )}
-            {card.notes && <ThemedText style={styles.notes}>{card.notes}</ThemedText>}
-            {card.exampleDe && (
-              <Pressable
-                onPress={(e) => playSentence(e)}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="Play example sentence"
-                style={[styles.speakBtn, { borderColor: tint }]}>
-                <IconSymbol name="speaker.wave.2.fill" size={20} color={tint} />
-                <ThemedText style={[styles.speakBtnText, { color: tint }]}>Listen</ThemedText>
-              </Pressable>
-            )}
-          </View>
-        ) : (
-          <>
-            <ThemedText type="title" style={styles.lemma}>
-              {frontWord}
-            </ThemedText>
-            <ThemedText style={styles.tapHint}>tap to reveal</ThemedText>
-          </>
-        )}
-      </Pressable>
+          ) : (
+            <>
+              <ThemedText type="title" style={styles.lemma}>
+                {frontWord}
+              </ThemedText>
+              <ThemedText style={styles.tapHint}>tap to reveal</ThemedText>
+            </>
+          )}
+        </Pressable>
+
+        {/*
+         * Swipe overlays. Layered on top of the card content and fade in as
+         * the card translates past ~20px in either direction. pointerEvents
+         * "none" so they never block the inner Pressable or PanResponder.
+         * Opacity caps at 0.92 (not 1) so the underlying card is faintly
+         * visible — the cue is "intent to commit", not "already committed".
+         */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.swipeOverlay,
+            { backgroundColor: Ratings.again },
+            {
+              opacity: swipeX.interpolate({
+                inputRange: [-150, -20, 0],
+                outputRange: [0.92, 0, 0],
+                extrapolate: 'clamp',
+              }),
+            },
+          ]}>
+          <ThemedText style={styles.swipeOverlayText}>Still Learning</ThemedText>
+        </Animated.View>
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.swipeOverlay,
+            { backgroundColor: Ratings.good },
+            {
+              opacity: swipeX.interpolate({
+                inputRange: [0, 20, 150],
+                outputRange: [0, 0, 0.92],
+                extrapolate: 'clamp',
+              }),
+            },
+          ]}>
+          <ThemedText style={styles.swipeOverlayText}>Know</ThemedText>
+        </Animated.View>
+      </Animated.View>
 
       <View style={styles.actions}>
         {revealed ? (
@@ -440,10 +572,32 @@ const styles = StyleSheet.create({
     flex: 1,
     borderWidth: 2,
     borderRadius: 16,
+    // Clip the absolutely-positioned swipe overlays to the rounded corners.
+    overflow: 'hidden',
+  },
+  cardTapTarget: {
+    flex: 1,
     padding: 24,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
+  },
+  swipeOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swipeOverlayText: {
+    color: 'white',
+    fontSize: 36,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+    paddingHorizontal: 16,
   },
   gender: { fontSize: 18, opacity: 0.7 },
   lemma: { fontSize: 40, lineHeight: 52, textAlign: 'center' },
