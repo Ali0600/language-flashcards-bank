@@ -9,6 +9,7 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import {
   useAutoCreateReverseCards,
+  useAutoPlayWord,
   useDailyNewCardLimit,
   usePlayInSilentMode,
 } from '@/hooks/use-settings';
@@ -24,6 +25,7 @@ export default function SettingsScreen() {
   const { limit, setLimit, loading } = useDailyNewCardLimit();
   const { enabled: playInSilentMode, setEnabled: setPlayInSilentMode } = usePlayInSilentMode();
   const { enabled: autoReverse, setEnabled: setAutoReverse } = useAutoCreateReverseCards();
+  const { enabled: autoPlayWord, setEnabled: setAutoPlayWord } = useAutoPlayWord();
   const [generatingReverses, setGeneratingReverses] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
 
@@ -174,6 +176,24 @@ export default function SettingsScreen() {
             <Switch
               value={playInSilentMode}
               onValueChange={onTogglePlayInSilentMode}
+              trackColor={{ true: tint }}
+            />
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleLabels}>
+              <ThemedText type="subtitle">Auto-play word on reveal</ThemedText>
+              <ThemedText style={styles.help}>
+                When on, the German lemma is pronounced automatically the moment you flip a
+                flashcard. The speaker icon in the study header shows the current state and
+                toggles it.
+              </ThemedText>
+            </View>
+            <Switch
+              value={autoPlayWord}
+              onValueChange={setAutoPlayWord}
               trackColor={{ true: tint }}
             />
           </View>

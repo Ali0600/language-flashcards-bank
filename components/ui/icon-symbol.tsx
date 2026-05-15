@@ -27,6 +27,7 @@ const MAPPING = {
   'gearshape.fill': 'settings',
   'xmark.circle.fill': 'cancel',
   'speaker.wave.2.fill': 'volume-up',
+  'speaker.slash.fill': 'volume-off',
   'shippingbox.fill': 'inventory-2',
   'fork.knife': 'restaurant',
   'signpost.right.fill': 'signpost',

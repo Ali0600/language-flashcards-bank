@@ -20,6 +20,7 @@ import { rateCard, type ReviewRating } from '@/services/review';
 import { Rating } from '@/services/scheduler';
 import { speakGerman, stopSpeech } from '@/services/speech';
 import type { FrequentNewCard } from '@/hooks/use-cards';
+import { useAutoPlayWord } from '@/hooks/use-settings';
 
 const RATINGS: { label: string; rating: ReviewRating; color: string }[] = [
   { label: 'Again', rating: Rating.Again, color: Ratings.again },
@@ -70,6 +71,14 @@ export function StudySession({
   // speaker icon next to the lemma — true while audio is actually playing.
   const [isPlayingWord, setIsPlayingWord] = useState(false);
   const haloAnim = useRef(new Animated.Value(0)).current;
+  // Persistent "auto-play the lemma when the card flips" preference. Mirror
+  // it into a ref so the auto-play effect can read the latest value without
+  // re-running (and interrupting in-flight audio) every time the user
+  // toggles the speaker icon mid-card. The toggle takes effect on the NEXT
+  // flip rather than disturbing the current playback.
+  const { enabled: autoPlayWord, setEnabled: setAutoPlayWord } = useAutoPlayWord();
+  const autoPlayRef = useRef(autoPlayWord);
+  autoPlayRef.current = autoPlayWord;
 
   // Snapshot the queue once, the first time we have data. Re-rendering
   // mid-session (a tab switch causing a re-query) must NOT reshuffle order.
@@ -86,11 +95,13 @@ export function StudySession({
   const currentLemma = currentCard?.lemma ?? null;
   const currentCardId = currentCard?.id ?? null;
 
-  // Auto-play the lemma the moment the back of the card is revealed. The
-  // user gets a free pronunciation each time they flip; tapping the inline
-  // speaker icon below replays it.
+  // Auto-play the lemma the moment the back of the card is revealed. Gated
+  // by the persistent `autoPlayWord` setting (read via ref so a mid-card
+  // toggle doesn't disturb in-flight audio). Tapping the inline speaker
+  // icon below always replays the word regardless of the setting.
   useEffect(() => {
     if (!revealed || !currentLemma) return;
+    if (!autoPlayRef.current) return;
     stopSpeech();
     speakGerman(currentLemma, {
       onStart: () => setIsPlayingWord(true),
@@ -244,9 +255,29 @@ export function StudySession({
           onTap={(c) => router.push(`/card/${c.id}`)}
         />
       )}
-      <ThemedText style={styles.progress}>
-        {index + 1} / {queue.length}
-      </ThemedText>
+      <View style={styles.topBar}>
+        <View style={styles.topBarSide} />
+        <ThemedText style={styles.progress}>
+          {index + 1} / {queue.length}
+        </ThemedText>
+        <View style={styles.topBarSide}>
+          <Pressable
+            onPress={() => setAutoPlayWord(!autoPlayWord)}
+            hitSlop={10}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: autoPlayWord }}
+            accessibilityLabel={
+              autoPlayWord ? 'Auto-play word: on. Tap to turn off.' : 'Auto-play word: off. Tap to turn on.'
+            }
+            style={styles.autoPlayToggle}>
+            <IconSymbol
+              name={autoPlayWord ? 'speaker.wave.2.fill' : 'speaker.slash.fill'}
+              size={20}
+              color={autoPlayWord ? tint : 'rgba(150,150,150,0.7)'}
+            />
+          </Pressable>
+        </View>
+      </View>
 
       <Pressable
         style={[styles.card, { borderColor: tint }]}
@@ -392,7 +423,19 @@ const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 24 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   empty: { textAlign: 'center', opacity: 0.6, maxWidth: 320 },
-  progress: { textAlign: 'center', opacity: 0.6, marginBottom: 8 },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  topBarSide: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  progress: { textAlign: 'center', opacity: 0.6 },
+  autoPlayToggle: { padding: 4 },
   card: {
     flex: 1,
     borderWidth: 2,

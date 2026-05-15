@@ -85,3 +85,7 @@ export function useAutoCreateReverseCards() {
     DEFAULT_SETTINGS.autoCreateReverseCards,
   );
 }
+
+export function useAutoPlayWord() {
+  return useBooleanSetting(SettingKeys.autoPlayWord, DEFAULT_SETTINGS.autoPlayWord);
+}
