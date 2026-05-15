@@ -130,7 +130,7 @@ export default function CardDetailScreen() {
           onPress: async () => {
             try {
               await deleteCard(card.id);
-              router.dismissTo('/(tabs)/library');
+              router.dismissTo('/(tabs)');
             } catch (e) {
               Alert.alert('Delete failed', e instanceof Error ? e.message : String(e));
             }
@@ -156,7 +156,7 @@ export default function CardDetailScreen() {
               // the card on the very next scan.
               await addLemmasToIgnoreList([card.lemma]);
               await deleteCard(card.id);
-              router.dismissTo('/(tabs)/library');
+              router.dismissTo('/(tabs)');
             } catch (e) {
               Alert.alert('Ignore failed', e instanceof Error ? e.message : String(e));
             }
