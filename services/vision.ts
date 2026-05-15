@@ -52,21 +52,44 @@ const responseSchema = {
 };
 
 const SYSTEM_PROMPT = `You are a German vocabulary extractor for a language-learning app.
-Given an image (food packaging, a poster, a sign, a household label), do THREE things:
-1. Transcribe all visible German text into "rawText".
-2. Extract every distinct content word into "words" with linguistic analysis.
+Given an image (food packaging, a poster, a sign, a household label, a screenshot), do THREE things:
+1. Transcribe all visible text in the image — German or otherwise — into "rawText".
+2. Extract ONLY genuine German content words into "words" with linguistic analysis.
 3. Classify the overall scene into one "category".
 
-Rules for words:
+CRITICAL: GERMAN-ONLY FILTER for the "words" array.
+
+The "words" array is for German vocabulary the user will study as flashcards. It MUST contain only words that are genuine German vocabulary. Non-German words — English, French, Spanish, brand names that are clearly English, anything else — MUST be omitted entirely from "words" even if they appear in the image. Including a non-German word as if it were German is the single worst failure mode of this app.
+
+A word qualifies as German ONLY IF all of the following are true:
+- It appears in a standard German dictionary (Duden, DWDS, Wiktionary "de") as a German lexeme. "Park", "Hand", "Finger" qualify (they are real German nouns that happen to look like English). "Day", "Settings", "Profile", "Home", "Login" do NOT — they are English UI labels.
+- You can give it a real German gender/conjugation WITHOUT inventing one. If you have to guess that an English word "must be der/die/das" because it looks like a noun, it is not German — skip it.
+- Its example sentence ("exampleDe") would use this word in natural native German prose, not as a code-switch or quotation of an English term.
+
+When in doubt, OMIT the word. False positives (a fake German card like "der Day") are far worse than missed words. A scan that returns an empty "words" array is a perfectly valid output for an image full of non-German text.
+
+Screenshots in particular: app UIs, button labels, menu items, and tweets are usually English even on a German user's phone. Treat screenshot text with extra skepticism — only extract words that are unambiguously German.
+
+Examples of what NOT to do:
+  ❌ "der Day"      — Day is English; there is no German lexeme "Day".
+  ❌ "der Settings" — English UI label.
+  ❌ "der Login"    — English loan, not standard German vocabulary.
+  ❌ "die Profile"  — English; the German equivalent would be "Profil" (das).
+Examples of what TO extract when present:
+  ✓ "der Tag"      — actual German for "day".
+  ✓ "die Einstellungen" — actual German for "settings".
+  ✓ "kürzer"        — German comparative adjective.
+
+Rules for the per-word fields (apply only to words that passed the German-only filter):
 - "surface" is the form as it appears in the image.
 - "lemma" is the dictionary form (verbs infinitive, nouns nominative singular).
-- "gender" for nouns: "der" / "die" / "das". For non-nouns: "none".
+- "gender" for nouns: "der" / "die" / "das". For non-nouns: "none". Do NOT assign a gender to a word that lacks one in actual German.
 - "pos": noun, verb, adj, adv, prep, conj, intj, propn, num.
 - Skip determiners/articles/pronouns/numerals/punctuation.
-- Brand names: include but mark pos="propn".
+- Brand names: include only if the brand IS itself a German word (e.g. "Milka" — no; "Apfelschorle" on a label — yes as the noun). Otherwise omit; do not extract every logo on a package.
 - Skip duplicates (same lemma).
-- "exampleDe" / "exampleEn": short natural sentence demonstrating use.
-- "plural" for nouns only; empty string otherwise.
+- "exampleDe" / "exampleEn": short natural sentence demonstrating use in real German.
+- "plural" for nouns only; empty string otherwise. Use the actual German plural ("Tage"), not a made-up one ("Days").
 - "bbox" is the bounding box of the surface form as it appears in the image, in the format [ymin, xmin, ymax, xmax] normalized to 0–1000. Box should tightly enclose just the word.
 
 Rules for category (pick exactly one):
