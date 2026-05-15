@@ -21,6 +21,7 @@ import {
   updateCard,
   type EditableCardFields,
 } from '@/services/card';
+import { addLemmasToIgnoreList } from '@/services/ignored';
 import { speakGerman } from '@/services/speech';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
@@ -132,6 +133,32 @@ export default function CardDetailScreen() {
               router.dismissTo('/(tabs)/library');
             } catch (e) {
               Alert.alert('Delete failed', e instanceof Error ? e.message : String(e));
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const confirmIgnore = () => {
+    Alert.alert(
+      `Ignore "${card.lemma}"?`,
+      `This card will be deleted and "${card.lemma}" will be added to your ignore list. Future photo scans won't recreate it.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Ignore',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Ignore-list write first: if the delete then fails for some
+              // reason, the lemma is at least flagged so we don't re-create
+              // the card on the very next scan.
+              await addLemmasToIgnoreList([card.lemma]);
+              await deleteCard(card.id);
+              router.dismissTo('/(tabs)/library');
+            } catch (e) {
+              Alert.alert('Ignore failed', e instanceof Error ? e.message : String(e));
             }
           },
         },
@@ -344,7 +371,7 @@ export default function CardDetailScreen() {
             </ThemedText>
           </Section>
 
-          {sibling ? (
+          {sibling && (
             <Section
               title={`Reverse card · ${sibling.direction === 'de_to_en' ? 'German → English' : 'English → German'}`}>
               <ThemedText style={styles.mono}>
@@ -360,7 +387,20 @@ export default function CardDetailScreen() {
                 <ThemedText style={[styles.linkText, { color: tint }]}>Open reverse card ›</ThemedText>
               </Pressable>
             </Section>
-          ) : (
+          )}
+
+          {/* Action buttons: Ignore → Delete → Create reverse. "Create reverse"
+              only shown when no sibling exists yet (a reverse can only be
+              created once per lemma). */}
+          <Pressable onPress={confirmIgnore} style={styles.ignoreBtn}>
+            <ThemedText style={styles.ignoreBtnText}>Ignore</ThemedText>
+          </Pressable>
+
+          <Pressable onPress={confirmDelete} style={styles.deleteBtn}>
+            <ThemedText style={styles.deleteBtnText}>Delete card</ThemedText>
+          </Pressable>
+
+          {!sibling && (
             <Pressable
               disabled={creatingReverse}
               onPress={async () => {
@@ -386,10 +426,6 @@ export default function CardDetailScreen() {
               </ThemedText>
             </Pressable>
           )}
-
-          <Pressable onPress={confirmDelete} style={styles.deleteBtn}>
-            <ThemedText style={styles.deleteBtnText}>Delete card</ThemedText>
-          </Pressable>
         </>
       )}
     </ScrollView>
@@ -472,8 +508,17 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: { fontWeight: '600' },
   btnDisabled: { opacity: 0.5 },
-  deleteBtn: {
+  ignoreBtn: {
     marginTop: 8,
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#F39C12',
+    alignItems: 'center',
+  },
+  ignoreBtnText: { color: '#F39C12', fontWeight: '600' },
+  deleteBtn: {
+    marginTop: 4,
     paddingVertical: 14,
     borderRadius: 10,
     borderWidth: 1,
