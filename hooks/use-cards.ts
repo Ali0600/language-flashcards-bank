@@ -136,26 +136,33 @@ export function useFolderDueCards(
       //    so the most-seen-in-this-folder words drip in first. Reverse cards
       //    have zero sightings (sightings only attach to forwards) and so
       //    naturally sort after their forward sibling.
+      //
+      //    We use chained LEFT JOINs (not a correlated subquery) because
+      //    Drizzle's `sql\`${cards.id}\`` renders as the bare column name
+      //    `"id"` rather than `"cards"."id"`, which SQLite coerces to a
+      //    string literal in the subquery context — the correlation
+      //    silently fails. Folding the photo predicate into the join
+      //    keeps Drizzle in control of all identifier qualification.
       let newCards: Card[] = [];
       if (quota > 0) {
-        const folderFreq = sql<number>`(
-          SELECT COUNT(*)
-          FROM ${cardSightings} s
-          JOIN ${photos} p ON p.id = s.photo_id
-          WHERE s.card_id = ${cards.id}
-            AND p.category = ${parentSlug}
-            ${
-              subPredicate === undefined
-                ? sql``
-                : subId === null
-                  ? sql`AND p.sub_category_id IS NULL`
-                  : sql`AND p.sub_category_id = ${subId}`
-            }
-        )`.as('folder_freq');
+        const photoJoinPredicate = subPredicate
+          ? and(
+              eq(photos.id, cardSightings.photoId),
+              eq(photos.category, parentSlug),
+              subPredicate,
+            )
+          : and(eq(photos.id, cardSightings.photoId), eq(photos.category, parentSlug));
+        // COUNT(photos.id) — counts only when both joins matched (sighting
+        // exists AND its photo is in the targeted folder/sub-cat). Reverse
+        // cards and forwards seen only in OTHER folders end up at 0.
+        const folderFreq = sql<number>`COUNT(${photos.id})`.as('folder_freq');
         const ranked = await db
           .select({ card: cards, freq: folderFreq })
           .from(cards)
+          .leftJoin(cardSightings, eq(cardSightings.cardId, cards.id))
+          .leftJoin(photos, photoJoinPredicate)
           .where(and(inArray(cards.id, inScope), eq(cards.state, 0), lte(cards.due, now)))
+          .groupBy(cards.id)
           .orderBy(desc(folderFreq), asc(cards.lemma))
           .limit(quota)
           .all();
