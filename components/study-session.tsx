@@ -593,7 +593,11 @@ const styles = StyleSheet.create({
   },
   swipeOverlayText: {
     color: 'white',
-    fontSize: 36,
+    fontSize: 34,
+    // ThemedText with no `type` prop applies its default style with
+    // `lineHeight: 24`. Without an explicit override here, a 34pt glyph is
+    // forced into a 24pt line box and gets clipped top + bottom.
+    lineHeight: 42,
     fontWeight: '700',
     letterSpacing: 0.5,
     textAlign: 'center',
