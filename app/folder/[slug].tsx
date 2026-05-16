@@ -2,6 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -81,6 +82,12 @@ export default function FolderScreen() {
     if (typeof sub === 'string') return `/study-folder/${slug}?sub=${sub}`;
     return `/study-folder/${slug}`;
   })();
+  // Audit path mirrors the study path — same sub-cat scope flows through to
+  // `fetchFolderCardsForAudit` in services/audit.ts.
+  const auditPath = (() => {
+    if (typeof sub === 'string') return `/audit/${slug}?sub=${sub}`;
+    return `/audit/${slug}`;
+  })();
 
   return (
     <CardsList
@@ -91,6 +98,7 @@ export default function FolderScreen() {
       onTint={onTint}
       onPressCard={(cardId) => router.push(`/card/${cardId}`)}
       onStudy={() => router.push(studyPath as never)}
+      onAudit={() => router.push(auditPath as never)}
     />
   );
 }
@@ -259,6 +267,7 @@ function CardsList({
   onTint,
   onPressCard,
   onStudy,
+  onAudit,
 }: {
   slug: string;
   /** `false` = no sub-cat filter (flat or all-mode). `string | null` = filter active. */
@@ -268,6 +277,7 @@ function CardsList({
   onTint: string;
   onPressCard: (cardId: string) => void;
   onStudy: () => void;
+  onAudit: () => void;
 }) {
   const flat = useFolderCards(slug);
   const subFiltered = useSubCategoryCards(slug, subId === false ? null : subId);
@@ -304,6 +314,19 @@ function CardsList({
 
   const cards = data as FolderCard[];
 
+  const confirmAudit = () => {
+    // Re-analyzing is a deliberate API-burning action — confirm before
+    // launching so a stray tap doesn't burn quota on a 100-card folder.
+    Alert.alert(
+      'Re-analyze cards?',
+      `This will run all ${cards.length} card${cards.length === 1 ? '' : 's'} in this folder through Gemini to suggest corrections and flag obscure vocabulary. You'll review and confirm changes before anything is saved.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Re-analyze', onPress: onAudit },
+      ],
+    );
+  };
+
   return (
     <ThemedView style={styles.container}>
       <View style={styles.header}>
@@ -313,6 +336,18 @@ function CardsList({
         <ThemedText style={styles.subtitle}>
           {cards.length} card{cards.length === 1 ? '' : 's'}
         </ThemedText>
+        {cards.length > 0 && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Re-analyze cards in this folder"
+            onPress={confirmAudit}
+            style={[styles.auditBtn, { borderColor: tint }]}>
+            <IconSymbol name="sparkles" size={14} color={tint} />
+            <ThemedText style={[styles.auditBtnText, { color: tint }]}>
+              Re-analyze cards
+            </ThemedText>
+          </Pressable>
+        )}
       </View>
 
       {loading ? (
@@ -384,6 +419,18 @@ const styles = StyleSheet.create({
   header: { marginBottom: 12, gap: 4 },
   title: { fontSize: 26, lineHeight: 34 },
   subtitle: { opacity: 0.6, fontSize: 14 },
+  auditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginTop: 4,
+  },
+  auditBtnText: { fontSize: 13, fontWeight: '600' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
