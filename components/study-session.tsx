@@ -25,6 +25,7 @@ import { rateCard, undoLatestReview, type ReviewRating } from '@/services/review
 import { Rating } from '@/services/scheduler';
 import { shuffleArray } from '@/services/shuffle';
 import { speakGerman, stopSpeech } from '@/services/speech';
+import { spokenLemma } from '@/services/speech-helpers';
 import type { FrequentNewCard } from '@/hooks/use-cards';
 import { useAutoPlayWord, useShuffleCards } from '@/hooks/use-settings';
 
@@ -262,6 +263,7 @@ export function StudySession({
   // wouldn't be a stable identity across renders).
   const currentCard = queue && index < queue.length ? queue[index] : null;
   const currentLemma = currentCard?.lemma ?? null;
+  const currentGender = currentCard?.gender ?? null;
   const currentCardId = currentCard?.id ?? null;
 
   // Slide the newly-mounted card into center. After a swipe commit, the
@@ -292,11 +294,16 @@ export function StudySession({
   // by the persistent `autoPlayWord` setting (read via ref so a mid-card
   // toggle doesn't disturb in-flight audio). Tapping the inline speaker
   // icon below always replays the word regardless of the setting.
+  //
+  // For nouns we speak "<article> <lemma>" (e.g. "der Tag") so the
+  // listener hears the gender — that's the part of German vocab that's
+  // hard to recall from spelling alone. Non-nouns get just the lemma.
+  // See `spokenLemma` in services/speech-helpers.ts.
   useEffect(() => {
     if (!revealed || !currentLemma) return;
     if (!autoPlayRef.current) return;
     stopSpeech();
-    speakGerman(currentLemma, {
+    speakGerman(spokenLemma(currentLemma, currentGender), {
       onStart: () => setIsPlayingWord(true),
       onDone: () => setIsPlayingWord(false),
       onStopped: () => setIsPlayingWord(false),
@@ -306,7 +313,7 @@ export function StudySession({
       stopSpeech();
       setIsPlayingWord(false);
     };
-  }, [revealed, currentCardId, currentLemma]);
+  }, [revealed, currentCardId, currentLemma, currentGender]);
 
   // Loop a scale+opacity pulse on the halo behind the inline speaker while
   // the word is playing. Stops cleanly when playback ends and resets the
@@ -394,7 +401,7 @@ export function StudySession({
     e?.stopPropagation?.();
     if (!card.lemma) return;
     stopSpeech();
-    speakGerman(card.lemma, {
+    speakGerman(spokenLemma(card.lemma, card.gender), {
       onStart: () => setIsPlayingWord(true),
       onDone: () => setIsPlayingWord(false),
       onStopped: () => setIsPlayingWord(false),
