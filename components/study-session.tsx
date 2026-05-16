@@ -21,7 +21,7 @@ import { Colors, Ratings } from '@/constants/theme';
 import { db } from '@/db/client';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { cards, type Card } from '@/db/schema';
-import { rateCard, type ReviewRating } from '@/services/review';
+import { rateCard, undoLatestReview, type ReviewRating } from '@/services/review';
 import { Rating } from '@/services/scheduler';
 import { shuffleArray } from '@/services/shuffle';
 import { speakGerman, stopSpeech } from '@/services/speech';
@@ -97,6 +97,17 @@ export function StudySession({
 
   // Whether the Flashcard-options modal (bell icon in the header) is open.
   const [optionsOpen, setOptionsOpen] = useState(false);
+
+  // Stack of pre-rate snapshots, one per rating this session. Each entry
+  // is the Card object as it was when we rated it (the queue array is
+  // snapshotted once and never mutated when ratings happen, so the FSRS
+  // columns on `queue[prevIndex]` still reflect the pre-rate state) plus
+  // where we were in the queue. The Undo button (header, left of the bell)
+  // pops the top entry, walks index back, re-reveals the card, and
+  // restores the DB through `undoLatestReview`. State mirror so the
+  // button's enabled-ness re-renders on push/pop.
+  const undoStack = useRef<{ card: Card; prevIndex: number }[]>([]);
+  const [undoCount, setUndoCount] = useState(0);
   // Snapshot of `shuffleCards` taken at the moment the modal opens. On
   // close, an OFF → ON transition triggers a one-shot reshuffle of the
   // upcoming portion of the queue. ON → ON does nothing (the user might
@@ -432,6 +443,12 @@ export function StudySession({
   const onRate = (rating: ReviewRating) => {
     if (submittingRef.current) return;
     const cardId = card.id;
+    // Push undo entry BEFORE advancing state. We capture the Card object
+    // by reference from the snapshotted queue — its FSRS columns still
+    // reflect the pre-rate state at this moment (queue is never mutated
+    // when we rate, only the DB is).
+    undoStack.current.push({ card, prevIndex: index });
+    setUndoCount(undoStack.current.length);
     setSubmitting(true);
     setRevealed(false);
     setIndex((i) => i + 1);
@@ -439,6 +456,31 @@ export function StudySession({
     rateCard(cardId, rating)
       .catch((e) => console.error('rateCard failed', e))
       .finally(() => setSubmitting(false));
+  };
+
+  const onUndo = () => {
+    // Block while a rate's DB write is still in flight — otherwise the
+    // undo's DELETE-most-recent-log might race ahead of the still-pending
+    // INSERT and leave behind a log for a rate the user thought was undone.
+    if (submittingRef.current) return;
+    const entry = undoStack.current.pop();
+    setUndoCount(undoStack.current.length);
+    if (!entry) return;
+    // Walk back to the rated card and surface its back side so the user
+    // can re-rate. The optimistic-advance in `onRate` advanced the index
+    // and reset revealed; the undo unwinds both. `sessionCount` also
+    // decrements so the running total stays honest.
+    setIndex(entry.prevIndex);
+    setRevealed(true);
+    setSessionCount((n) => Math.max(0, n - 1));
+    // Fire the DB undo in background. If the card was deleted externally
+    // (the focus-prune effect may have already removed it from the queue
+    // — but only if it ran AFTER we returned from card detail, which is
+    // a separate flow), the UPDATE is a no-op and the DELETE finds no
+    // matching log. Either way nothing breaks; we just log on error.
+    undoLatestReview(entry.card).catch((e) =>
+      console.error('undoLatestReview failed', e),
+    );
   };
 
   const openOptions = () => {
@@ -577,6 +619,22 @@ export function StudySession({
           {index + 1} / {queue.length}
         </ThemedText>
         <View style={styles.topBarSide}>
+          <Pressable
+            onPress={onUndo}
+            disabled={undoCount === 0 || submitting}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Undo last rating"
+            accessibilityState={{ disabled: undoCount === 0 || submitting }}
+            style={styles.optionsBtn}>
+            <IconSymbol
+              name="arrow.uturn.backward"
+              size={20}
+              color={
+                undoCount === 0 || submitting ? 'rgba(150,150,150,0.5)' : tint
+              }
+            />
+          </Pressable>
           <Pressable
             onPress={openOptions}
             hitSlop={10}
@@ -913,6 +971,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
+    gap: 12,
   },
   progress: { textAlign: 'center', opacity: 0.6 },
   optionsBtn: { padding: 4 },

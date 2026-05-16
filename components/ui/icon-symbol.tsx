@@ -46,6 +46,7 @@ const MAPPING = {
   'circle': 'radio-button-unchecked',
   'trash.fill': 'delete',
   'bell.fill': 'notifications',
+  'arrow.uturn.backward': 'undo',
 } as IconMapping;
 
 /**
