@@ -4,6 +4,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { FOLDER_SLUGS, normalizeCategory, type FolderSlug } from '@/constants/folders';
 import { assertGeminiKey } from '@/lib/env';
 import type { BBox, WordAnalysis } from '@/lib/types';
+import { sanitizeArticle } from './vision-helpers';
 
 const MODEL = 'gemini-2.5-flash';
 const REQUEST_TIMEOUT_MS = 90_000;
@@ -75,17 +76,24 @@ Examples of what NOT to do:
   ❌ "der Settings" — English UI label.
   ❌ "der Login"    — English loan, not standard German vocabulary.
   ❌ "die Profile"  — English; the German equivalent would be "Profil" (das).
+  ❌ "das alles"    — alles is an indefinite pronoun (lowercase lemma → not a noun). Use gender="none".
+  ❌ "der gut"      — gut is an adjective; no article. Use gender="none".
+  ❌ "das gehen"    — gehen is a verb infinitive; no article. (The substantivized form "das Gehen" capitalized IS a noun and DOES take "das".)
 Examples of what TO extract when present:
   ✓ "der Tag"      — actual German for "day".
   ✓ "die Einstellungen" — actual German for "settings".
-  ✓ "kürzer"        — German comparative adjective.
+  ✓ "kürzer"        — German comparative adjective. gender="none".
+  ✓ "alles"         — indefinite pronoun. gender="none", pos="pron".
+  ✓ "nichts"        — indefinite pronoun. gender="none", pos="pron".
+  ✓ "das Gehen"     — substantivized verb (capitalized noun). gender="das" is correct.
 
 Rules for the per-word fields (apply only to words that passed the German-only filter):
 - "surface" is the form as it appears in the image.
 - "lemma" is the dictionary form (verbs infinitive, nouns nominative singular).
 - "gender" for nouns: "der" / "die" / "das". For non-nouns: "none". Do NOT assign a gender to a word that lacks one in actual German.
-- "pos": noun, verb, adj, adv, prep, conj, intj, propn, num.
-- Skip determiners/articles/pronouns/numerals/punctuation.
+- CAPITALIZATION CHECK — read carefully. In standard German, nouns are ALWAYS capitalized in their dictionary (lemma) form. If the lemma starts with a lowercase letter, the word is NOT a noun and gender MUST be "none" — no exceptions. This rule prevents the common error of stamping "das" / "der" / "die" on indefinite pronouns ("alles", "nichts", "etwas", "viele", "alle"), quantifiers ("viel", "wenig"), adjectives ("gut", "schnell"), adverbs ("hier", "jetzt"), and verb infinitives ("gehen", "sehen"). The lemma's case is what matters, NOT the surface form: a sentence-initial "Alles" still has lemma "alles" with gender="none".
+- "pos": noun, verb, adj, adv, prep, conj, intj, propn, pron, num.
+- Skip articles, determiners, basic personal pronouns (ich, du, er, sie, es, wir, ihr, Sie, mich, dich, ...), and punctuation. Indefinite pronouns (alles, nichts, etwas, jemand, niemand, viele, alle, einige, manche, ...) ARE worth including as flashcard vocabulary — extract them with pos="pron" and gender="none".
 - Brand names: include only if the brand IS itself a German word (e.g. "Milka" — no; "Apfelschorle" on a label — yes as the noun). Otherwise omit; do not extract every logo on a package.
 - Skip duplicates (same lemma).
 - "exampleDe" / "exampleEn": short natural sentence demonstrating use in real German.
@@ -252,17 +260,20 @@ export async function analyzeImage(
 
   return {
     rawText: parsed.rawText,
-    words: parsed.words.map((p) => ({
-      surface: p.surface,
-      lemma: p.lemma,
-      gender: normalizeGender(p.gender),
-      pos: p.pos.toLowerCase(),
-      translationEn: p.translationEn,
-      exampleDe: p.exampleDe,
-      exampleEn: p.exampleEn,
-      plural: p.plural && p.plural.length > 0 ? p.plural : null,
-      bbox: normalizeBbox(p.bbox),
-    })),
+    words: parsed.words.map((p) => {
+      const pos = p.pos.toLowerCase();
+      return {
+        surface: p.surface,
+        lemma: p.lemma,
+        gender: sanitizeArticle(pos, p.lemma, normalizeGender(p.gender)),
+        pos,
+        translationEn: p.translationEn,
+        exampleDe: p.exampleDe,
+        exampleEn: p.exampleEn,
+        plural: p.plural && p.plural.length > 0 ? p.plural : null,
+        bbox: normalizeBbox(p.bbox),
+      };
+    }),
     category,
     appName,
   };
