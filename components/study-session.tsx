@@ -425,14 +425,14 @@ export function StudySession({
   };
 
   const closeOptions = () => {
-    // If Shuffle was OFF when the modal opened and is ON now, the user
-    // turned it on inside this modal session — apply it immediately to the
-    // upcoming portion of the queue. Cards before the current index stay
-    // (they're history); index itself stays put; whatever card now sits at
-    // queue[index] becomes the new current card. Reveal is reset because
-    // the current slot's card may now be different and we want to land on
-    // its front.
-    if (!initialShuffleRef.current && shuffleCardsRef.current) {
+    const wasOff = !initialShuffleRef.current;
+    const isOn = shuffleCardsRef.current;
+    if (wasOff && isOn) {
+      // OFF → ON inside this modal session: shuffle the upcoming portion
+      // of the queue. Cards before `index` stay (they're history); index
+      // itself stays put; whatever card now sits at queue[index] becomes
+      // the new current card. Reveal is reset because the current slot's
+      // card may now be different and we want to land on its front.
       setQueue((prev) => {
         if (!prev) return prev;
         const i = indexRef.current;
@@ -440,6 +440,35 @@ export function StudySession({
         const head = prev.slice(0, i);
         const tail = shuffleArray(prev.slice(i));
         return [...head, ...tail];
+      });
+      setRevealed(false);
+    } else if (!wasOff && !isOn) {
+      // ON → OFF inside this modal session: restore the upcoming portion
+      // to the default FSRS-due order. The latest `dueCards` (from the
+      // hook) is already in that order — we just filter it to the IDs
+      // currently in queue[index..] so the user's session progress
+      // (rated cards before index) stays intact. Anything in the queue
+      // that's not in dueCards (defensive — shouldn't happen since the
+      // focus-prune effect catches deletions) gets appended at the end so
+      // we never silently drop a card.
+      setQueue((prev) => {
+        if (!prev) return prev;
+        const i = indexRef.current;
+        if (i >= prev.length) return prev;
+        const upcoming = prev.slice(i);
+        const upcomingIds = new Set(upcoming.map((c) => c.id));
+        const ordered: Card[] = [];
+        const seen = new Set<string>();
+        for (const c of dueCards) {
+          if (upcomingIds.has(c.id)) {
+            ordered.push(c);
+            seen.add(c.id);
+          }
+        }
+        for (const c of upcoming) {
+          if (!seen.has(c.id)) ordered.push(c);
+        }
+        return [...prev.slice(0, i), ...ordered];
       });
       setRevealed(false);
     }
