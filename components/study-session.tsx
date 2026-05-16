@@ -1,6 +1,7 @@
+import { inArray } from 'drizzle-orm';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -15,8 +16,9 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors, Ratings } from '@/constants/theme';
+import { db } from '@/db/client';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import type { Card } from '@/db/schema';
+import { cards, type Card } from '@/db/schema';
 import { rateCard, type ReviewRating } from '@/services/review';
 import { Rating } from '@/services/scheduler';
 import { speakGerman, stopSpeech } from '@/services/speech';
@@ -143,6 +145,64 @@ export function StudySession({
       setQueue(dueCards);
     }
   }, [queue, loading, dueCards]);
+
+  // Mirror the latest queue/index into refs so the focus-pruning effect
+  // can read them without re-subscribing when they change. Re-subscribing
+  // every rate would needlessly fire the DB-existence query on every card
+  // advance; we only want it to run when the user actually navigates back
+  // to study (e.g. returning from the card detail screen).
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
+  const indexRef = useRef(index);
+  indexRef.current = index;
+
+  // When the study screen regains focus (e.g. user returned from the card
+  // detail screen after tapping Ignore or Delete), prune any cards in
+  // `queue[index..]` that no longer exist in the DB. The local queue is
+  // snapshotted once and tracked by index — without this, a deleted card
+  // would stay visible and "View details" would route to `/card/[id]` and
+  // hit the "Card not found" empty state.
+  //
+  // We only check `queue[index..]` (the upcoming cards). Cards before the
+  // current index have already been rated and progressed past — they
+  // intentionally stay in the queue array as historical, even if deleted
+  // externally. We never touch the index here either: filtering preserves
+  // it, so the next-in-line card slides into the current position. If the
+  // current card itself was the one removed, we also reset `revealed` to
+  // false so the new current card appears on its front (not magically
+  // flipped to the back the deleted card was on).
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        const q = queueRef.current;
+        const i = indexRef.current;
+        if (q === null || i >= q.length) return;
+        const remaining = q.slice(i);
+        if (remaining.length === 0) return;
+        const remainingIds = remaining.map((c) => c.id);
+        const rows = await db
+          .select({ id: cards.id })
+          .from(cards)
+          .where(inArray(cards.id, remainingIds))
+          .all();
+        if (cancelled) return;
+        const existSet = new Set(rows.map((r) => r.id));
+        if (remaining.every((c) => existSet.has(c.id))) return;
+        const filtered = q.filter((c, idx) => idx < i || existSet.has(c.id));
+        // Reset reveal only if the current slot's card actually changed.
+        // If only later cards were pruned, the current card is unchanged
+        // and we should leave the reveal state alone (the user might be
+        // mid-flip on the current card).
+        const currentChanged = filtered[i]?.id !== q[i]?.id;
+        setQueue(filtered);
+        if (currentChanged) setRevealed(false);
+      })().catch((e) => console.warn('Study-queue prune failed', e));
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
 
   // The current card is computed below; capture its id + lemma here so the
   // auto-play effect's dependencies are primitive (the card object itself
