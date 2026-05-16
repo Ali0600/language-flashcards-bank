@@ -614,11 +614,7 @@ export function StudySession({
         />
       )}
       <View style={styles.topBar}>
-        <View style={styles.topBarSide} />
-        <ThemedText style={styles.progress}>
-          {index + 1} / {queue.length}
-        </ThemedText>
-        <View style={styles.topBarSide}>
+        <View style={[styles.topBarSide, styles.topBarSideLeft]}>
           <Pressable
             onPress={onUndo}
             disabled={undoCount === 0 || submitting}
@@ -635,6 +631,11 @@ export function StudySession({
               }
             />
           </Pressable>
+        </View>
+        <ThemedText style={styles.progress}>
+          {index + 1} / {queue.length}
+        </ThemedText>
+        <View style={styles.topBarSide}>
           <Pressable
             onPress={openOptions}
             hitSlop={10}
@@ -973,6 +974,10 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: 12,
   },
+  // Override on the LEFT side container so its icons (currently just the
+  // Undo button) flush to the left of the screen, mirroring the bell on
+  // the right.
+  topBarSideLeft: { justifyContent: 'flex-start' },
   progress: { textAlign: 'center', opacity: 0.6 },
   optionsBtn: { padding: 4 },
   optionsBackdrop: {
