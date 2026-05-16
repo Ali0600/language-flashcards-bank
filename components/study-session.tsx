@@ -115,47 +115,65 @@ export function StudySession({
   // `commitSwipeRef`, which is reassigned every render so it captures the
   // current `onRate` closure (which in turn closes over the current card).
   const swipeX = useRef(new Animated.Value(0)).current;
+  const swipeY = useRef(new Animated.Value(0)).current;
   const submittingRef = useRef(submitting);
   submittingRef.current = submitting;
-  const commitSwipeRef = useRef<(dir: 'left' | 'right') => void>(() => {});
+  // Four-way swipe-to-rate. Horizontal axis maps to Again/Good (the most
+  // common ratings in a session); vertical axis maps to Hard/Easy.
+  //   left  → Again   right → Good
+  //   up    → Hard    down  → Easy
+  const commitSwipeRef =
+    useRef<(dir: 'left' | 'right' | 'up' | 'down') => void>(() => {});
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         // Don't claim on touch start — let taps through to the inner Pressable.
         onStartShouldSetPanResponder: () => false,
-        // Claim only when the move is clearly horizontal AND we're not
-        // currently submitting a previous rating. The horizontal-vs-vertical
-        // threshold (1.5x) lets vertical scroll surfaces (e.g. notes that
-        // overflow) keep working if added later.
+        // Claim on any displacement past 8px on either axis (we now handle
+        // both horizontal and vertical swipes). Direction is decided at
+        // release by whichever axis dominates AND passes the threshold;
+        // sub-threshold gestures spring back. Dropping the old `dx > dy`
+        // dominance check here means vertical swipes are now accepted too —
+        // there's no scroll surface in the card view, so claiming vertical
+        // is safe.
         onMoveShouldSetPanResponder: (_, g) =>
           !submittingRef.current &&
-          Math.abs(g.dx) > 8 &&
-          Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+          (Math.abs(g.dx) > 8 || Math.abs(g.dy) > 8),
         onPanResponderGrant: () => {
           swipeX.setValue(0);
+          swipeY.setValue(0);
         },
         // PanResponder events originate in JS, so the move animation must
         // use the JS driver. The derived overlay opacity + card rotate are
         // also JS-driven for consistency — fine perf-wise at one card.
-        onPanResponderMove: Animated.event([null, { dx: swipeX }], {
-          useNativeDriver: false,
-        }),
+        onPanResponderMove: Animated.event(
+          [null, { dx: swipeX, dy: swipeY }],
+          { useNativeDriver: false },
+        ),
         onPanResponderRelease: (_, g) => {
           const THRESHOLD = 120;
-          if (g.dx > THRESHOLD) commitSwipeRef.current('right');
-          else if (g.dx < -THRESHOLD) commitSwipeRef.current('left');
-          else
-            Animated.spring(swipeX, {
-              toValue: 0,
-              useNativeDriver: false,
-            }).start();
+          const ax = Math.abs(g.dx);
+          const ay = Math.abs(g.dy);
+          // Dominant axis wins. If the dominant axis also clears the
+          // threshold, commit in that direction. Otherwise spring both
+          // axes back to 0 (the user gave up mid-swipe).
+          if (ax > ay) {
+            if (g.dx > THRESHOLD) return commitSwipeRef.current('right');
+            if (g.dx < -THRESHOLD) return commitSwipeRef.current('left');
+          } else {
+            if (g.dy > THRESHOLD) return commitSwipeRef.current('down');
+            if (g.dy < -THRESHOLD) return commitSwipeRef.current('up');
+          }
+          Animated.spring(swipeX, { toValue: 0, useNativeDriver: false }).start();
+          Animated.spring(swipeY, { toValue: 0, useNativeDriver: false }).start();
         },
         onPanResponderTerminate: () => {
           Animated.spring(swipeX, { toValue: 0, useNativeDriver: false }).start();
+          Animated.spring(swipeY, { toValue: 0, useNativeDriver: false }).start();
         },
       }),
-    [swipeX],
+    [swipeX, swipeY],
   );
 
   // Snapshot the queue once, the first time we have data. Re-rendering
@@ -236,12 +254,14 @@ export function StudySession({
   const currentCardId = currentCard?.id ?? null;
 
   // Slide the newly-mounted card into center. After a swipe commit, the
-  // commit handler teleports swipeX to ±600 (off-screen on the OPPOSITE
-  // side from the swipe) before React advances state, so the new card
-  // mounts off-screen — this spring is the visible "slide in from the
-  // other side of the deck" animation. On initial mount and on same-card
-  // re-renders, swipeX is already 0 so the spring is a visual no-op.
-  // `swipeX` has a stable identity (from `useRef`) so it's safe in deps.
+  // commit handler teleports the active axis (swipeX or swipeY) to ±600
+  // (off-screen on the OPPOSITE side from the swipe) before React advances
+  // state, so the new card mounts off-screen — this spring is the visible
+  // "slide in from the other side of the deck" animation. The non-active
+  // axis is already at 0 (snapped by the commit handler to prevent
+  // angled fling), so its spring is a no-op. On initial mount and on
+  // same-card re-renders, both axes are 0 — both springs no-op visually.
+  // `swipeX` / `swipeY` have stable identity (from `useRef`).
   useEffect(() => {
     Animated.spring(swipeX, {
       toValue: 0,
@@ -249,7 +269,13 @@ export function StudySession({
       speed: 16,
       bounciness: 0,
     }).start();
-  }, [currentCardId, swipeX]);
+    Animated.spring(swipeY, {
+      toValue: 0,
+      useNativeDriver: false,
+      speed: 16,
+      bounciness: 0,
+    }).start();
+  }, [currentCardId, swipeX, swipeY]);
 
   // Auto-play the lemma the moment the back of the card is revealed. Gated
   // by the persistent `autoPlayWord` setting (read via ref so a mid-card
@@ -478,38 +504,60 @@ export function StudySession({
   // Rebind every render so the swipe commit closes over the current `onRate`
   // (which closes over the current card). The PanResponder calls through this
   // ref so its stable identity isn't a problem.
-  commitSwipeRef.current = (dir: 'left' | 'right') => {
+  commitSwipeRef.current = (dir: 'left' | 'right' | 'up' | 'down') => {
     if (submittingRef.current) return;
-    const rating: ReviewRating = dir === 'left' ? Rating.Again : Rating.Good;
+    const rating: ReviewRating =
+      dir === 'left'
+        ? Rating.Again
+        : dir === 'right'
+          ? Rating.Good
+          : dir === 'up'
+            ? Rating.Hard
+            : Rating.Easy;
     // Fire the haptic at release time (not after the 180ms fling) so the
     // buzz lines up with the gesture, not the animation end.
     fireRatingHaptic(rating);
-    // Fling the card off-screen in the swipe direction. After the fling
-    // ends we DELIBERATELY DO NOT reset swipeX to 0 here. Two reasons:
+    // Horizontal axis flings handle left/right; vertical handles up/down.
+    // Snap the ORTHOGONAL axis to 0 first so the fling flies straight in
+    // the intended direction — a slightly-diagonal release would otherwise
+    // see the card fly at an angle off-screen.
+    const horizontal = dir === 'left' || dir === 'right';
+    if (horizontal) {
+      swipeY.setValue(0);
+    } else {
+      swipeX.setValue(0);
+    }
+    const flingAxis = horizontal ? swipeX : swipeY;
+    const flingTarget = dir === 'left' || dir === 'up' ? -600 : 600;
+    // Fling the card off-screen along the chosen axis. After the fling
+    // ends we DELIBERATELY DO NOT reset the axis to 0 here.
     //
-    //   1. `swipeX.setValue(0)` fires synchronously via `setNativeProps`,
-    //      which pushes the new transform directly to native, bypassing
-    //      React's reconciler. The old card's children are still in the
-    //      native view at that moment (React hasn't committed the state
-    //      advance yet), so the OLD card jumps to translateX:0 and sits
-    //      at center until React's batched commit catches up — that's the
+    //   1. `setValue(0)` fires synchronously via `setNativeProps`, which
+    //      pushes the new transform directly to native, bypassing React's
+    //      reconciler. The old card's children are still in the native
+    //      view at that moment (React hasn't committed the state advance
+    //      yet), so the OLD card would jump to (0, 0) and sit at center
+    //      until React's batched commit catches up — that's the
     //      "previous card visible for a beat before the next one shows"
-    //      glitch the user reported.
+    //      glitch.
     //
-    //   2. Instead, we advance state AND teleport swipeX to the OPPOSITE
-    //      side off-screen. Both happen before React commits, so the
-    //      transitional frame has the old card off-screen (invisible).
+    //   2. Instead, we advance state AND teleport the active axis to the
+    //      OPPOSITE side off-screen. Both happen before React commits, so
+    //      the transitional frame has the old card off-screen (invisible).
     //      The next card mounts off-screen too. The `useEffect` on
-    //      `currentCardId` then springs swipeX back to 0 — a real
-    //      slide-in from the opposite side, like the next card in a deck
-    //      rolling into view.
-    Animated.timing(swipeX, {
-      toValue: dir === 'left' ? -600 : 600,
+    //      `currentCardId` then springs the axis back to 0 — a real
+    //      slide-in from the opposite side, like the next card in a deck.
+    Animated.timing(flingAxis, {
+      toValue: flingTarget,
       duration: 180,
       useNativeDriver: false,
     }).start(() => {
       onRate(rating);
-      swipeX.setValue(dir === 'left' ? 600 : -600);
+      if (horizontal) {
+        swipeX.setValue(dir === 'left' ? 600 : -600);
+      } else {
+        swipeY.setValue(dir === 'up' ? 600 : -600);
+      }
     });
   };
 
@@ -547,8 +595,11 @@ export function StudySession({
             borderColor: tint,
             transform: [
               { translateX: swipeX },
+              { translateY: swipeY },
               {
-                // Slight Tinder-style tilt so the swipe feels tactile.
+                // Slight Tinder-style tilt so horizontal swipes feel
+                // tactile. Vertical swipes don't tilt — only swipeX
+                // drives the rotation.
                 rotate: swipeX.interpolate({
                   inputRange: [-300, 0, 300],
                   outputRange: ['-8deg', '0deg', '8deg'],
@@ -632,11 +683,20 @@ export function StudySession({
         </Pressable>
 
         {/*
-         * Swipe overlays. Layered on top of the card content and fade in as
-         * the card translates past ~20px in either direction. pointerEvents
-         * "none" so they never block the inner Pressable or PanResponder.
-         * Opacity caps at 0.92 (not 1) so the underlying card is faintly
-         * visible — the cue is "intent to commit", not "already committed".
+         * Four swipe overlays — one per direction — layered on top of the
+         * card content. Each fades in as its axis crosses ~20px in the
+         * relevant direction and caps at 0.92 (so the underlying card is
+         * faintly visible — the cue is "intent to commit", not "already
+         * committed"). pointerEvents "none" so they never block the inner
+         * Pressable or PanResponder.
+         *
+         * Colors mirror the rating-button palette so the gesture and the
+         * button row share visual identity:
+         *   left  Again — red    right Good — green
+         *   up    Hard  — orange down  Easy — blue
+         *
+         * On a near-diagonal swipe both axes' overlays partially fade in;
+         * the dominant axis (decided at release) wins the commit.
          */}
         <Animated.View
           pointerEvents="none"
@@ -651,7 +711,7 @@ export function StudySession({
               }),
             },
           ]}>
-          <ThemedText style={styles.swipeOverlayText}>Still Learning</ThemedText>
+          <ThemedText style={styles.swipeOverlayText}>Again</ThemedText>
         </Animated.View>
         <Animated.View
           pointerEvents="none"
@@ -666,7 +726,37 @@ export function StudySession({
               }),
             },
           ]}>
-          <ThemedText style={styles.swipeOverlayText}>Know</ThemedText>
+          <ThemedText style={styles.swipeOverlayText}>Good</ThemedText>
+        </Animated.View>
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.swipeOverlay,
+            { backgroundColor: Ratings.hard },
+            {
+              opacity: swipeY.interpolate({
+                inputRange: [-150, -20, 0],
+                outputRange: [0.92, 0, 0],
+                extrapolate: 'clamp',
+              }),
+            },
+          ]}>
+          <ThemedText style={styles.swipeOverlayText}>Hard</ThemedText>
+        </Animated.View>
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.swipeOverlay,
+            { backgroundColor: Ratings.easy },
+            {
+              opacity: swipeY.interpolate({
+                inputRange: [0, 20, 150],
+                outputRange: [0, 0, 0.92],
+                extrapolate: 'clamp',
+              }),
+            },
+          ]}>
+          <ThemedText style={styles.swipeOverlayText}>Easy</ThemedText>
         </Animated.View>
       </Animated.View>
 
