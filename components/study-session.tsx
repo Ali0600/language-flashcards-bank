@@ -97,6 +97,11 @@ export function StudySession({
 
   // Whether the Flashcard-options modal (bell icon in the header) is open.
   const [optionsOpen, setOptionsOpen] = useState(false);
+  // Snapshot of `shuffleCards` taken at the moment the modal opens. On
+  // close, an OFF → ON transition triggers a one-shot reshuffle of the
+  // upcoming portion of the queue. ON → ON does nothing (the user might
+  // just be toggling Auto-play and would be surprised by a reshuffle).
+  const initialShuffleRef = useRef(false);
 
   // Swipe-to-rate (either face of the card). Drag left for "Still Learning"
   // (=Again) or right for "Know" (=Good). The 4 rating buttons (which only
@@ -410,6 +415,37 @@ export function StudySession({
       .finally(() => setSubmitting(false));
   };
 
+  const openOptions = () => {
+    // Capture the shuffle setting at modal-open time so closeOptions can
+    // detect an OFF → ON transition. Reading the ref (not the React state)
+    // is correct here because state may not be flushed yet if the toggle
+    // happened in the same tick as the bell tap.
+    initialShuffleRef.current = shuffleCardsRef.current;
+    setOptionsOpen(true);
+  };
+
+  const closeOptions = () => {
+    // If Shuffle was OFF when the modal opened and is ON now, the user
+    // turned it on inside this modal session — apply it immediately to the
+    // upcoming portion of the queue. Cards before the current index stay
+    // (they're history); index itself stays put; whatever card now sits at
+    // queue[index] becomes the new current card. Reveal is reset because
+    // the current slot's card may now be different and we want to land on
+    // its front.
+    if (!initialShuffleRef.current && shuffleCardsRef.current) {
+      setQueue((prev) => {
+        if (!prev) return prev;
+        const i = indexRef.current;
+        if (i >= prev.length) return prev;
+        const head = prev.slice(0, i);
+        const tail = shuffleArray(prev.slice(i));
+        return [...head, ...tail];
+      });
+      setRevealed(false);
+    }
+    setOptionsOpen(false);
+  };
+
   // Rebind every render so the swipe commit closes over the current `onRate`
   // (which closes over the current card). The PanResponder calls through this
   // ref so its stable identity isn't a problem.
@@ -465,7 +501,7 @@ export function StudySession({
         </ThemedText>
         <View style={styles.topBarSide}>
           <Pressable
-            onPress={() => setOptionsOpen(true)}
+            onPress={openOptions}
             hitSlop={10}
             accessibilityRole="button"
             accessibilityLabel="Open flashcard options"
@@ -645,8 +681,8 @@ export function StudySession({
         visible={optionsOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => setOptionsOpen(false)}>
-        <Pressable style={styles.optionsBackdrop} onPress={() => setOptionsOpen(false)}>
+        onRequestClose={closeOptions}>
+        <Pressable style={styles.optionsBackdrop} onPress={closeOptions}>
           {/* Inner Pressable: swallow taps so they don't bubble to the
               backdrop's onPress and close the sheet from inside it. */}
           <Pressable
@@ -694,7 +730,7 @@ export function StudySession({
             </View>
 
             <Pressable
-              onPress={() => setOptionsOpen(false)}
+              onPress={closeOptions}
               style={[styles.optionsDone, { backgroundColor: tint }]}>
               <ThemedText style={[styles.optionsDoneText, { color: onTint }]}>Done</ThemedText>
             </Pressable>
