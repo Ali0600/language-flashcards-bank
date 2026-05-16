@@ -8,6 +8,7 @@ export const SettingKeys = {
   playInSilentMode: 'playInSilentMode',
   autoCreateReverseCards: 'autoCreateReverseCards',
   autoPlayWord: 'autoPlayWord',
+  shuffleCards: 'shuffleCards',
 } as const;
 
 export type SettingKey = (typeof SettingKeys)[keyof typeof SettingKeys];
@@ -17,6 +18,7 @@ export const DEFAULT_SETTINGS = {
   playInSilentMode: true,
   autoCreateReverseCards: false,
   autoPlayWord: true,
+  shuffleCards: false,
 } as const satisfies Record<SettingKey, unknown>;
 
 export async function getSetting<T>(key: SettingKey, fallback: T): Promise<T> {

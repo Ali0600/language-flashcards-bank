@@ -45,6 +45,7 @@ const MAPPING = {
   'checkmark.circle.fill': 'check-circle',
   'circle': 'radio-button-unchecked',
   'trash.fill': 'delete',
+  'bell.fill': 'notifications',
 } as IconMapping;
 
 /**

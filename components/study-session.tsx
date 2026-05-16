@@ -5,10 +5,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Modal,
   PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   View,
 } from 'react-native';
 
@@ -21,9 +23,10 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { cards, type Card } from '@/db/schema';
 import { rateCard, type ReviewRating } from '@/services/review';
 import { Rating } from '@/services/scheduler';
+import { shuffleArray } from '@/services/shuffle';
 import { speakGerman, stopSpeech } from '@/services/speech';
 import type { FrequentNewCard } from '@/hooks/use-cards';
-import { useAutoPlayWord } from '@/hooks/use-settings';
+import { useAutoPlayWord, useShuffleCards } from '@/hooks/use-settings';
 
 const RATINGS: { label: string; rating: ReviewRating; color: string }[] = [
   { label: 'Again', rating: Rating.Again, color: Ratings.again },
@@ -83,6 +86,18 @@ export function StudySession({
   const autoPlayRef = useRef(autoPlayWord);
   autoPlayRef.current = autoPlayWord;
 
+  // Shuffle is read once at queue-snapshot time. Toggling mid-session does
+  // NOT reshuffle the in-flight queue — that would be jarring; the new
+  // setting takes effect on the next session (when the queue is null and
+  // gets re-snapshotted from fresh `dueCards`). The ref lets the snapshot
+  // effect read the latest value without re-firing.
+  const { enabled: shuffleCards, setEnabled: setShuffleCards } = useShuffleCards();
+  const shuffleCardsRef = useRef(shuffleCards);
+  shuffleCardsRef.current = shuffleCards;
+
+  // Whether the Flashcard-options modal (bell icon in the header) is open.
+  const [optionsOpen, setOptionsOpen] = useState(false);
+
   // Swipe-to-rate (either face of the card). Drag left for "Still Learning"
   // (=Again) or right for "Know" (=Good). The 4 rating buttons (which only
   // appear on the back) remain available for finer-grained ratings
@@ -140,9 +155,13 @@ export function StudySession({
 
   // Snapshot the queue once, the first time we have data. Re-rendering
   // mid-session (a tab switch causing a re-query) must NOT reshuffle order.
+  // If the `shuffleCards` setting is on at snapshot time, we randomize the
+  // order via Fisher-Yates before locking the queue in; the setting is
+  // intentionally NOT re-checked on every render so toggling mid-session
+  // doesn't disturb the in-flight order.
   useEffect(() => {
     if (queue === null && !loading && dueCards.length > 0) {
-      setQueue(dueCards);
+      setQueue(shuffleCardsRef.current ? shuffleArray(dueCards) : dueCards);
     }
   }, [queue, loading, dueCards]);
 
@@ -446,19 +465,12 @@ export function StudySession({
         </ThemedText>
         <View style={styles.topBarSide}>
           <Pressable
-            onPress={() => setAutoPlayWord(!autoPlayWord)}
+            onPress={() => setOptionsOpen(true)}
             hitSlop={10}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: autoPlayWord }}
-            accessibilityLabel={
-              autoPlayWord ? 'Auto-play word: on. Tap to turn off.' : 'Auto-play word: off. Tap to turn on.'
-            }
-            style={styles.autoPlayToggle}>
-            <IconSymbol
-              name={autoPlayWord ? 'speaker.wave.2.fill' : 'speaker.slash.fill'}
-              size={20}
-              color={autoPlayWord ? tint : 'rgba(150,150,150,0.7)'}
-            />
+            accessibilityRole="button"
+            accessibilityLabel="Open flashcard options"
+            style={styles.optionsBtn}>
+            <IconSymbol name="bell.fill" size={20} color={tint} />
           </Pressable>
         </View>
       </View>
@@ -621,6 +633,74 @@ export function StudySession({
           </Pressable>
         )}
       </View>
+
+      {/*
+       * Flashcard options modal. Opened by the bell icon in the header.
+       * Contents are scoped to behaviors that affect the study session
+       * itself (vs. the global app Settings page); right now that's
+       * Auto-play and Shuffle, both as plain switch rows. The backdrop
+       * is tap-to-dismiss; an explicit Done button confirms discoverability.
+       */}
+      <Modal
+        visible={optionsOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOptionsOpen(false)}>
+        <Pressable style={styles.optionsBackdrop} onPress={() => setOptionsOpen(false)}>
+          {/* Inner Pressable: swallow taps so they don't bubble to the
+              backdrop's onPress and close the sheet from inside it. */}
+          <Pressable
+            onPress={() => {}}
+            style={[
+              styles.optionsCard,
+              {
+                backgroundColor: Colors[colorScheme].background,
+                borderColor: 'rgba(150,150,150,0.3)',
+              },
+            ]}>
+            <ThemedText type="subtitle" style={styles.optionsTitle}>
+              Flashcard options
+            </ThemedText>
+
+            <View style={styles.optionsRow}>
+              <View style={styles.optionsLabels}>
+                <ThemedText type="defaultSemiBold">Auto-play word</ThemedText>
+                <ThemedText style={styles.optionsHelp}>
+                  Speak the German lemma the moment you flip a card.
+                </ThemedText>
+              </View>
+              <Switch
+                value={autoPlayWord}
+                onValueChange={setAutoPlayWord}
+                trackColor={{ true: tint }}
+              />
+            </View>
+
+            <View style={styles.optionsDivider} />
+
+            <View style={styles.optionsRow}>
+              <View style={styles.optionsLabels}>
+                <ThemedText type="defaultSemiBold">Shuffle cards</ThemedText>
+                <ThemedText style={styles.optionsHelp}>
+                  Randomize the order of due cards. Applies when the next
+                  session starts; the current queue keeps its order.
+                </ThemedText>
+              </View>
+              <Switch
+                value={shuffleCards}
+                onValueChange={setShuffleCards}
+                trackColor={{ true: tint }}
+              />
+            </View>
+
+            <Pressable
+              onPress={() => setOptionsOpen(false)}
+              style={[styles.optionsDone, { backgroundColor: tint }]}>
+              <ThemedText style={[styles.optionsDoneText, { color: onTint }]}>Done</ThemedText>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ThemedView>
   );
 }
@@ -680,7 +760,42 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   progress: { textAlign: 'center', opacity: 0.6 },
-  autoPlayToggle: { padding: 4 },
+  optionsBtn: { padding: 4 },
+  optionsBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  optionsCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 20,
+    gap: 16,
+  },
+  optionsTitle: { fontSize: 18 },
+  optionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  optionsLabels: { flex: 1, gap: 4 },
+  optionsHelp: { opacity: 0.65, fontSize: 13, lineHeight: 18 },
+  optionsDivider: {
+    height: 1,
+    backgroundColor: 'rgba(150,150,150,0.2)',
+  },
+  optionsDone: {
+    marginTop: 4,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  optionsDoneText: { fontWeight: '600' },
   card: {
     flex: 1,
     borderWidth: 2,

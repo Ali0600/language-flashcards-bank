@@ -89,3 +89,7 @@ export function useAutoCreateReverseCards() {
 export function useAutoPlayWord() {
   return useBooleanSetting(SettingKeys.autoPlayWord, DEFAULT_SETTINGS.autoPlayWord);
 }
+
+export function useShuffleCards() {
+  return useBooleanSetting(SettingKeys.shuffleCards, DEFAULT_SETTINGS.shuffleCards);
+}
