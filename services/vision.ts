@@ -94,6 +94,18 @@ Rules for the per-word fields (apply only to words that passed the German-only f
 - CAPITALIZATION CHECK — read carefully. In standard German, nouns are ALWAYS capitalized in their dictionary (lemma) form. If the lemma starts with a lowercase letter, the word is NOT a noun and gender MUST be "none" — no exceptions. This rule prevents the common error of stamping "das" / "der" / "die" on indefinite pronouns ("alles", "nichts", "etwas", "viele", "alle"), quantifiers ("viel", "wenig"), adjectives ("gut", "schnell"), adverbs ("hier", "jetzt"), and verb infinitives ("gehen", "sehen"). The lemma's case is what matters, NOT the surface form: a sentence-initial "Alles" still has lemma "alles" with gender="none".
 - "pos": noun, verb, adj, adv, prep, conj, intj, propn, pron, num.
 - Skip articles, determiners, basic personal pronouns (ich, du, er, sie, es, wir, ihr, Sie, mich, dich, ...), and punctuation. Indefinite pronouns (alles, nichts, etwas, jemand, niemand, viele, alle, einige, manche, ...) ARE worth including as flashcard vocabulary — extract them with pos="pron" and gender="none".
+
+TRANSLATION FORMAT — "translationEn" must follow the per-POS shape below so the user's flashcards have a predictable, consistent appearance. Read carefully and apply exactly:
+- pos="noun":  lowercase singular English noun, NO English article. ✓ "Tag" → "day"   ❌ "Day" / "the day" / "days".
+- pos="propn": accepted English form, capitalized as in English. ✓ "München" → "Munich", "Berlin" → "Berlin".
+- pos="verb":  "to <verb>" infinitive marker, lowercase. ✓ "sparen" → "to save", "gehen" → "to go", "vergessen" → "to forget"   ❌ "save" / "Save" / "saving".
+- pos="adj":   lowercase base / positive form. ✓ "schnell" → "fast", "klein" → "small". For comparative lemmas like "kürzer", translate as the comparative: "shorter".
+- pos="adv":   lowercase, no prefix. ✓ "hier" → "here", "jetzt" → "now", "oft" → "often".
+- pos="prep":  lowercase preposition only. ✓ "mit" → "with", "ohne" → "without". Do NOT append the German case (e.g. NOT "with (+ dative)").
+- pos="conj":  lowercase. ✓ "und" → "and", "aber" → "but", "weil" → "because".
+- pos="pron":  lowercase. ✓ "alles" → "everything", "nichts" → "nothing", "etwas" → "something".
+- pos="intj":  natural English equivalent, lowercase. ✓ "hoppla" → "oops".
+- pos="num":   spelled-out lowercase (though numerals are usually skipped per the Skip rule). ✓ "eins" → "one".
 - Brand names: include only if the brand IS itself a German word (e.g. "Milka" — no; "Apfelschorle" on a label — yes as the noun). Otherwise omit; do not extract every logo on a package.
 - Skip duplicates (same lemma).
 - "exampleDe" / "exampleEn": short natural sentence demonstrating use in real German.

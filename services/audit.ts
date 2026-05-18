@@ -91,12 +91,24 @@ For each input card, validate it on two axes:
 1) CORRECTNESS — issues to fix in the existing fields. For each field that's wrong, return one issue.
    - "lemma": is it a real German word in dictionary (citation) form? Verbs as infinitives, nouns as nominative singular, adjectives as base form.
    - "gender": correct article for the noun ("der" / "die" / "das")? Use "none" for non-nouns. CAPITALIZATION CHECK: in German, nouns are ALWAYS capitalized in their dictionary form. A lowercase lemma (e.g. "alles", "schnell", "gehen") CANNOT be a noun — its gender MUST be "none".
-   - "translationEn": accurate, useful English gloss?
+   - "translationEn": accurate, useful English gloss AND follows the TRANSLATION FORMAT below (so flashcards have a predictable shape — flag a card as needing a translationEn fix if it's correct in meaning but wrong in format, e.g. "save" for a verb instead of "to save").
    - "exampleDe": grammatical, natural German sentence that demonstrates the word in context?
    - "exampleEn": faithful English translation of exampleDe?
    - "plural": correct plural form (for nouns only)? Empty string for non-nouns.
 
-   Only return an issue when the value clearly needs to change. Do NOT pad with cosmetic rephrasings — if the field is already fine, omit it.
+   TRANSLATION FORMAT — apply per POS exactly:
+     * pos="noun":  lowercase singular English noun, NO English article. ✓ "day"  ❌ "the day" / "Day" / "days".
+     * pos="propn": accepted English form, capitalized. ✓ "Munich", "Berlin".
+     * pos="verb":  "to <verb>" infinitive marker, lowercase. ✓ "to save", "to go", "to forget"  ❌ "save" / "Save" / "saving".
+     * pos="adj":   lowercase base / positive form. ✓ "fast", "small". Comparative lemma → comparative gloss ("shorter").
+     * pos="adv":   lowercase, no prefix. ✓ "here", "now", "often".
+     * pos="prep":  lowercase preposition only. ✓ "with", "without". Do NOT append the German case.
+     * pos="conj":  lowercase. ✓ "and", "but", "because".
+     * pos="pron":  lowercase. ✓ "everything", "nothing", "something".
+     * pos="intj":  natural English equivalent, lowercase.
+     * pos="num":   spelled-out lowercase. ✓ "one".
+
+   Only return an issue when the value clearly needs to change. Do NOT pad with cosmetic rephrasings — if the field is already fine, omit it. A translationEn that's correct in meaning but wrong in format (e.g. "save" for a verb) IS a real issue and should be flagged with the corrected format ("to save").
 
    Use empty string "" as the suggestedValue to indicate "clear this field" (gender → none, plural → no plural).
 
