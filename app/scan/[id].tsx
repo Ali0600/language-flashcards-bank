@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
@@ -9,6 +9,7 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useScan, type ScanRow } from '@/hooks/use-scan';
 import { addLemmasToIgnoreList } from '@/services/ignored';
+import { deleteDraftPhoto } from '@/services/photo';
 import { removeSighting } from '@/services/sighting';
 
 export default function ScanResultsScreen() {
@@ -24,6 +25,24 @@ export default function ScanResultsScreen() {
   const [unchecked, setUnchecked] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
 
+  // The capture pipeline writes the photo + cards + sightings into the DB
+  // BEFORE this screen mounts (so we can show the user what was extracted).
+  // But the user shouldn't see those cards count toward frequency / appear
+  // in their library until they confirm with Next. `confirmedRef` flips to
+  // true the moment the user advances forward through the wizard; the
+  // unmount cleanup deletes the draft photo and its orphaned cards
+  // otherwise (Back button, swipe-back gesture, app dismissed, etc.).
+  const confirmedRef = useRef(false);
+  useEffect(() => {
+    return () => {
+      if (confirmedRef.current) return;
+      if (!id) return;
+      deleteDraftPhoto(id).catch((e) =>
+        console.warn('Draft photo cleanup failed', e),
+      );
+    };
+  }, [id]);
+
   const toggle = (sightingId: string) => {
     setUnchecked((prev) => {
       const next = new Set(prev);
@@ -34,11 +53,14 @@ export default function ScanResultsScreen() {
   };
 
   const goToCategoryStep = () => {
-    // `replace` so back-navigation from the category picker skips this (now
-    // stale, since unchecked rows are already deleted) screen. Forward
-    // Gemini's sub-category suggestion if there is one — the category screen
-    // re-emits it onward to /scan-subcategory only when the chosen parent
-    // supports sub-categories.
+    // Mark the draft as confirmed BEFORE we navigate away so the unmount
+    // cleanup effect doesn't immediately delete the photo we're about to
+    // commit. `replace` so back-navigation from the category picker skips
+    // this (now stale, since unchecked rows are already deleted) screen.
+    // Forward Gemini's sub-category suggestion if there is one — the
+    // category screen re-emits it onward to /scan-subcategory only when
+    // the chosen parent supports sub-categories.
+    confirmedRef.current = true;
     const qs = suggestion ? `?suggestion=${encodeURIComponent(suggestion)}` : '';
     router.replace(`/scan-category/${id}${qs}` as never);
   };
