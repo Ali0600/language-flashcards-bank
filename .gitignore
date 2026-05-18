@@ -43,3 +43,9 @@ app-example
 # generated native folders
 /ios
 /android
+
+.claude/
+
+# .vscode/ is intentionally tracked — the formatting + recommended-extensions
+# config is useful for anyone working on the repo. Don't add it back to the
+# ignore list without first removing the existing tracked files.
