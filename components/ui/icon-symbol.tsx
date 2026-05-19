@@ -47,6 +47,9 @@ const MAPPING = {
   'trash.fill': 'delete',
   'bell.fill': 'notifications',
   'arrow.uturn.backward': 'undo',
+  'pencil': 'edit',
+  'list.bullet': 'list',
+  'keyboard': 'keyboard',
 } as IconMapping;
 
 /**

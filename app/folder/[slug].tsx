@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 
+import { StudyModeModal, type StudyMode } from '@/components/study-mode-modal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -78,10 +79,16 @@ export default function FolderScreen() {
 
   // Study button mirrors the folder URL so the underlying scope is identical.
   // `sub=all` translates to "no sub-cat filter" in `useFolderDueCards` too.
-  const studyPath = (() => {
-    if (typeof sub === 'string') return `/study-folder/${slug}?sub=${sub}`;
-    return `/study-folder/${slug}`;
-  })();
+  // The mode picker opens first; we plug the chosen mode into the query.
+  // `flashcards` is the default, so we omit `?mode=` to keep URLs clean.
+  const buildStudyPath = (mode: StudyMode) => {
+    const params: string[] = [];
+    if (mode !== 'flashcards') params.push(`mode=${mode}`);
+    if (typeof sub === 'string') params.push(`sub=${sub}`);
+    return params.length > 0
+      ? `/study-folder/${slug}?${params.join('&')}`
+      : `/study-folder/${slug}`;
+  };
   // Audit path mirrors the study path — same sub-cat scope flows through to
   // `fetchFolderCardsForAudit` in services/audit.ts.
   const auditPath = (() => {
@@ -97,7 +104,7 @@ export default function FolderScreen() {
       tint={tint}
       onTint={onTint}
       onPressCard={(cardId) => router.push(`/card/${cardId}`)}
-      onStudy={() => router.push(studyPath as never)}
+      onStudy={(mode) => router.push(buildStudyPath(mode) as never)}
       onAudit={() => router.push(auditPath as never)}
     />
   );
@@ -276,7 +283,8 @@ function CardsList({
   tint: string;
   onTint: string;
   onPressCard: (cardId: string) => void;
-  onStudy: () => void;
+  /** Called after the user picks a mode in the StudyModeModal. */
+  onStudy: (mode: StudyMode) => void;
   onAudit: () => void;
 }) {
   const flat = useFolderCards(slug);
@@ -285,6 +293,10 @@ function CardsList({
 
   const { loading, data, error, refetch } = usingSubFilter ? subFiltered : flat;
   const [refreshing, setRefreshing] = useState(false);
+  // Local UI state for the Study-mode picker modal. Kept here (not at the
+  // FolderScreen level) because it's purely a CardsList concern — only the
+  // flat-card-list view has a Study button.
+  const [studyModalOpen, setStudyModalOpen] = useState(false);
 
   const label = (() => {
     switch (viewMode) {
@@ -376,13 +388,22 @@ function CardsList({
       {cards.length > 0 && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Study cards in ${label}`}
-          onPress={onStudy}
+          accessibilityLabel={`Pick study mode for cards in ${label}`}
+          onPress={() => setStudyModalOpen(true)}
           style={[styles.studyBtn, { backgroundColor: tint }]}>
           <IconSymbol name="sparkles" size={18} color={onTint} />
           <ThemedText style={[styles.studyBtnText, { color: onTint }]}>Study</ThemedText>
         </Pressable>
       )}
+
+      <StudyModeModal
+        visible={studyModalOpen}
+        onClose={() => setStudyModalOpen(false)}
+        onPick={(mode) => {
+          setStudyModalOpen(false);
+          onStudy(mode);
+        }}
+      />
     </ThemedView>
   );
 }
