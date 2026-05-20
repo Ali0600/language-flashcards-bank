@@ -386,6 +386,14 @@ export function StudySession({
             setSessionCount(0);
             setRevealed(false);
             setQueue(null);
+            // Clear the undo stack — its entries reference Card objects + a
+            // `prevIndex` from the queue we're about to throw away. Leaving
+            // them behind would re-enable the Undo button once the new queue
+            // snapshots, and tapping it would walk the index to a stale
+            // position AND fire `undoLatestReview` against a card whose
+            // recent review log might belong to an unrelated earlier session.
+            undoStack.current = [];
+            setUndoCount(0);
             refetch();
           }}>
           <ThemedText>Start over</ThemedText>

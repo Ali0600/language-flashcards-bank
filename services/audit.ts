@@ -171,9 +171,22 @@ async function callGeminiBatch(
     plural: c.plural ?? '',
   }));
 
+  // Per-batch safety timeout. The caller-supplied `signal` covers user-driven
+  // cancellation (the audit screen aborts on unmount), but a Gemini call that
+  // stalls below the network layer wouldn't be caught by that alone — there's
+  // no socket-level timeout in the SDK. So we chain a local AbortController
+  // that aborts on EITHER (a) the outer signal firing, or (b) our own timer.
+  // Whichever fires first wins; the local controller's signal is what we pass
+  // to the SDK. On a timeout-driven abort we rethrow a distinct message so
+  // `isRetryableError` (which filters out "aborted") doesn't accidentally
+  // retry — same convention as `services/vision.ts`.
+  const localController = new AbortController();
+  let timedOut = false;
+  const onOuterAbort = () => localController.abort();
+  signal.addEventListener('abort', onOuterAbort, { once: true });
   const localTimer = setTimeout(() => {
-    // Caller-supplied signal handles cancellation; we add a per-batch
-    // safety timeout so a stuck request doesn't hang the audit forever.
+    timedOut = true;
+    localController.abort();
   }, REQUEST_TIMEOUT_MS);
 
   try {
@@ -194,7 +207,7 @@ async function callGeminiBatch(
         responseMimeType: 'application/json',
         responseSchema,
         temperature: 0.2,
-        abortSignal: signal,
+        abortSignal: localController.signal,
       },
     });
     const text = response.text;
@@ -220,8 +233,14 @@ async function callGeminiBatch(
           ? { rationale: r.everydayRationale.trim() }
           : null,
     }));
+  } catch (err) {
+    if (timedOut) {
+      throw new Error(`Audit batch timed out after ${REQUEST_TIMEOUT_MS / 1000}s`);
+    }
+    throw err;
   } finally {
     clearTimeout(localTimer);
+    signal.removeEventListener('abort', onOuterAbort);
   }
 }
 
