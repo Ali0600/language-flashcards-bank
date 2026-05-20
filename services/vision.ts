@@ -107,6 +107,13 @@ TRANSLATION FORMAT — "translationEn" must follow the per-POS shape below so th
 - pos="intj":  natural English equivalent, lowercase. ✓ "hoppla" → "oops".
 - pos="num":   spelled-out lowercase (though numerals are usually skipped per the Skip rule). ✓ "eins" → "one".
 
+INTERNAL CONSISTENCY — lemma, translationEn, exampleDe, and exampleEn must ALL refer to the same word form. The lemma is your anchor; every other field follows from it. Mixing forms is the canonical failure mode for adjectives and adverbs that have positive / comparative / superlative variants.
+  - Default to the POSITIVE (base) form as the lemma. ✓ lemma="wenig", translationEn="little" / "few" (NOT "less"); lemma="gut", translationEn="good" (NOT "better"); lemma="viel", translationEn="much" / "many" (NOT "more"); lemma="kurz", translationEn="short" (NOT "shorter"); lemma="gern", translationEn="gladly" (NOT "rather").
+  - exampleDe MUST use the LEMMA form, not a derived form. ❌ lemma="wenig" + exampleDe="Ich habe weniger Zeit." is INCONSISTENT — the example uses the comparative. ✓ lemma="wenig" + exampleDe="Ich habe wenig Zeit."
+  - When the source image ONLY contains a comparative/superlative (e.g. it shows "weniger Zucker" with no positive-form word visible) AND no natural base-form example fits the scene, you may treat the comparative AS the lemma — but then EVERY field must match: lemma="weniger", translationEn="less", exampleDe uses "weniger", exampleEn uses "less". All four together.
+  - The forbidden mix is positive lemma + comparative translation (or vice versa). ❌ lemma="wenig" + translationEn="less", ❌ lemma="weniger" + translationEn="little", ❌ lemma="gut" + translationEn="better", ❌ lemma="viel" + translationEn="more". These are all internally inconsistent and MUST NOT be produced.
+  - Applies to all suppletive / irregular pairs (gut/besser/am besten, viel/mehr/am meisten, gern/lieber/am liebsten, hoch/höher/am höchsten, nah/näher/am nächsten) and regular comparatives (kürzer, länger, billiger, teurer, schneller, ...).
+
 CONTEXTUAL TRANSLATION — when a German adjective, verb, or noun has multiple valid English glosses that diverge by domain, choose the one that fits the SCENE you classified the image as AND the exampleDe sentence you produce. Translating the lemma in isolation often misses the natural English collocation. Use the image's domain (food packaging, skincare label, household sign, etc.) as the disambiguator.
   ✓ "pflegend" on a hand cream / shampoo → "nourishing" (or "conditioning"); on a person caring for someone → "caring".
   ✓ "frisch" on food packaging → "fresh"; on a weather sign about the air → "cool".

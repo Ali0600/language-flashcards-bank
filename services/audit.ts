@@ -88,7 +88,13 @@ const SYSTEM_PROMPT = `You are reviewing German vocabulary flashcards from a lea
 
 For each input card, validate it on two axes:
 
-1) CORRECTNESS — issues to fix in the existing fields. For each field that's wrong, return one issue.
+1) CORRECTNESS — issues to fix in the existing fields. For each field that's wrong, return one issue. ALSO check that lemma / translationEn / exampleDe / exampleEn are INTERNALLY CONSISTENT — they must all refer to the same word form. The canonical failure mode is a positive-form lemma paired with a comparative translation (or vice versa). Examples of the inconsistency you should flag:
+   - lemma="wenig" + translationEn="less" → either fix the lemma to "weniger" (if exampleDe uses the comparative) or fix the translation to "little" / "few" (if exampleDe uses the base form). Pick whichever produces fewer cascading rewrites given what exampleDe actually contains.
+   - lemma="gut" + translationEn="better" → either lemma="besser" + translation="better", or lemma="gut" + translation="good".
+   - lemma="viel" + translationEn="more" → either lemma="mehr" + translation="more", or lemma="viel" + translation="much" / "many".
+   - lemma="kurz" + translationEn="shorter" → either lemma="kürzer" + translation="shorter", or lemma="kurz" + translation="short".
+   When you flag this kind of inconsistency, ALSO verify that the example sentences match the form you're settling on. If you propose changing the lemma to a comparative and exampleDe already uses the comparative, exampleEn should use the comparative gloss too. If exampleDe uses the base form, the lemma fix should bring everything back to the base form.
+
    - "lemma": is it a real German word in dictionary (citation) form? Verbs as infinitives, nouns as nominative singular, adjectives as base form.
    - "gender": correct article for the noun ("der" / "die" / "das")? Use "none" for non-nouns. CAPITALIZATION CHECK: in German, nouns are ALWAYS capitalized in their dictionary form. A lowercase lemma (e.g. "alles", "schnell", "gehen") CANNOT be a noun — its gender MUST be "none".
    - "translationEn": accurate, useful English gloss AND follows the TRANSLATION FORMAT below (so flashcards have a predictable shape — flag a card as needing a translationEn fix if it's correct in meaning but wrong in format, e.g. "save" for a verb instead of "to save"). ALSO flag when the gloss is correct in isolation but contextually unnatural for the way the word is used in exampleDe — e.g. "pflegend" → "caring" is fine for a person, but in "Sie hat eine pflegende Handcreme" the natural English is "nourishing". Suggest the contextually natural gloss, or the multi-sense form "primary, secondary" (most natural first) when both senses apply equally.
