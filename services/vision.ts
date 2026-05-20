@@ -106,6 +106,15 @@ TRANSLATION FORMAT — "translationEn" must follow the per-POS shape below so th
 - pos="pron":  lowercase. ✓ "alles" → "everything", "nichts" → "nothing", "etwas" → "something".
 - pos="intj":  natural English equivalent, lowercase. ✓ "hoppla" → "oops".
 - pos="num":   spelled-out lowercase (though numerals are usually skipped per the Skip rule). ✓ "eins" → "one".
+
+CONTEXTUAL TRANSLATION — when a German adjective, verb, or noun has multiple valid English glosses that diverge by domain, choose the one that fits the SCENE you classified the image as AND the exampleDe sentence you produce. Translating the lemma in isolation often misses the natural English collocation. Use the image's domain (food packaging, skincare label, household sign, etc.) as the disambiguator.
+  ✓ "pflegend" on a hand cream / shampoo → "nourishing" (or "conditioning"); on a person caring for someone → "caring".
+  ✓ "frisch" on food packaging → "fresh"; on a weather sign about the air → "cool".
+  ✓ "kräftig" describing flavor on a coffee bag → "rich"; describing a person → "strong".
+  ✓ "weich" on a fabric softener → "soft"; describing a person's voice → "gentle".
+  ✓ "trocken" on a wine label → "dry"; on skincare → "dry" (same); on a tea description → "dry" — same gloss, context just confirms.
+When two senses apply equally well to the scene, list both separated by ", " with the more natural-in-context one FIRST (e.g. "nourishing, caring"). exampleEn MUST read as natural native English — never a word-for-word swap from exampleDe if that sounds awkward. If exampleDe uses the word in a specific contextual sense, exampleEn should use the matching English gloss for that sense, NOT the literal lemma translation. Example: lemma "pflegend", exampleDe "Sie hat eine pflegende Handcreme" → exampleEn "She has a nourishing hand cream" (NOT "She has a caring hand cream").
+
 - Brand names: include only if the brand IS itself a German word (e.g. "Milka" — no; "Apfelschorle" on a label — yes as the noun). Otherwise omit; do not extract every logo on a package.
 - Skip duplicates (same lemma).
 - "exampleDe" / "exampleEn": short natural sentence demonstrating use in real German.

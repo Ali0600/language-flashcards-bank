@@ -91,9 +91,9 @@ For each input card, validate it on two axes:
 1) CORRECTNESS — issues to fix in the existing fields. For each field that's wrong, return one issue.
    - "lemma": is it a real German word in dictionary (citation) form? Verbs as infinitives, nouns as nominative singular, adjectives as base form.
    - "gender": correct article for the noun ("der" / "die" / "das")? Use "none" for non-nouns. CAPITALIZATION CHECK: in German, nouns are ALWAYS capitalized in their dictionary form. A lowercase lemma (e.g. "alles", "schnell", "gehen") CANNOT be a noun — its gender MUST be "none".
-   - "translationEn": accurate, useful English gloss AND follows the TRANSLATION FORMAT below (so flashcards have a predictable shape — flag a card as needing a translationEn fix if it's correct in meaning but wrong in format, e.g. "save" for a verb instead of "to save").
+   - "translationEn": accurate, useful English gloss AND follows the TRANSLATION FORMAT below (so flashcards have a predictable shape — flag a card as needing a translationEn fix if it's correct in meaning but wrong in format, e.g. "save" for a verb instead of "to save"). ALSO flag when the gloss is correct in isolation but contextually unnatural for the way the word is used in exampleDe — e.g. "pflegend" → "caring" is fine for a person, but in "Sie hat eine pflegende Handcreme" the natural English is "nourishing". Suggest the contextually natural gloss, or the multi-sense form "primary, secondary" (most natural first) when both senses apply equally.
    - "exampleDe": grammatical, natural German sentence that demonstrates the word in context?
-   - "exampleEn": faithful English translation of exampleDe?
+   - "exampleEn": faithful AND natural native English translation of exampleDe. Flag when the existing exampleEn is a word-for-word swap from German that reads awkwardly to a native English speaker (e.g. "She has a caring hand cream" — a native would say "nourishing"). The translationEn fix and the exampleEn fix often pair: if you're flagging one for a context mismatch, check the other too.
    - "plural": correct plural form (for nouns only)? Empty string for non-nouns.
 
    TRANSLATION FORMAT — apply per POS exactly:
