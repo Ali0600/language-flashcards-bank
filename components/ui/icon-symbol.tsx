@@ -50,6 +50,8 @@ const MAPPING = {
   'pencil': 'edit',
   'list.bullet': 'list',
   'keyboard': 'keyboard',
+  'repeat': 'repeat',
+  'stop.fill': 'stop',
 } as IconMapping;
 
 /**

@@ -22,33 +22,46 @@ export type SpeakOptions = {
 };
 
 export function speakGerman(text: string | null | undefined, options?: SpeakOptions): void {
+  speakInLanguage(text, 'de-DE', options, /* errorHint */ 'German');
+}
+
+export function speakEnglish(text: string | null | undefined, options?: SpeakOptions): void {
+  speakInLanguage(text, 'en-US', options, /* errorHint */ 'English');
+}
+
+function speakInLanguage(
+  text: string | null | undefined,
+  language: 'de-DE' | 'en-US',
+  options: SpeakOptions | undefined,
+  errorHint: string,
+): void {
   if (!text) return;
   try {
     Speech.speak(text, {
-      language: 'de-DE',
+      language,
       pitch: 1,
       rate: 0.95,
       onStart: () => {
-        console.log('speech:onStart', text.slice(0, 40));
+        console.log('speech:onStart', language, text.slice(0, 40));
         options?.onStart?.();
       },
       onDone: () => {
-        console.log('speech:onDone');
+        console.log('speech:onDone', language);
         options?.onDone?.();
       },
       onStopped: () => {
         options?.onStopped?.();
       },
       onError: (e) => {
-        console.error('speech:onError', e);
+        console.error('speech:onError', language, e);
         maybeAlertError(
-          'iOS could not play German speech. Check: ringer switch off (iPhone Silent toggle), volume up, and Settings → Accessibility → Spoken Content → Voices → German has a voice downloaded.',
+          `iOS could not play ${errorHint} speech. Check: ringer switch off (iPhone Silent toggle), volume up, and Settings → Accessibility → Spoken Content → Voices → ${errorHint} has a voice downloaded.`,
         );
         options?.onError?.();
       },
     });
   } catch (e) {
-    console.error('speakGerman failed', e);
+    console.error(`speak${errorHint} failed`, e);
     maybeAlertError(e instanceof Error ? e.message : String(e));
     options?.onError?.();
   }

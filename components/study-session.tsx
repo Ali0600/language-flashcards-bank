@@ -24,10 +24,10 @@ import { cards, type Card } from '@/db/schema';
 import { rateCard, undoLatestReview, type ReviewRating } from '@/services/review';
 import { Rating } from '@/services/scheduler';
 import { shuffleArray } from '@/services/shuffle';
-import { speakGerman, stopSpeech } from '@/services/speech';
+import { speakEnglish, speakGerman, stopSpeech } from '@/services/speech';
 import { spokenLemma } from '@/services/speech-helpers';
 import type { FrequentNewCard } from '@/hooks/use-cards';
-import { useAutoPlayWord, useShuffleCards } from '@/hooks/use-settings';
+import { useAutoPlayWord, useRepeatCount, useShuffleCards } from '@/hooks/use-settings';
 
 const RATINGS: { label: string; rating: ReviewRating; color: string }[] = [
   { label: 'Again', rating: Rating.Again, color: Ratings.again },
@@ -35,6 +35,39 @@ const RATINGS: { label: string; rating: ReviewRating; color: string }[] = [
   { label: 'Good', rating: Rating.Good, color: Ratings.good },
   { label: 'Easy', rating: Rating.Easy, color: Ratings.easy },
 ];
+
+/** Promise-resolving sleep; used by the Repeat loop's pacing. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Wrap a non-awaitable TTS call (speakGerman / speakEnglish — both fire-and-
+ * forget) into a Promise that resolves when playback finishes, is stopped, or
+ * errors. Used by the Repeat loop to await each utterance before flipping.
+ *
+ * The Promise NEVER rejects — onError resolves the same as onDone — because
+ * the loop treats all three terminal states identically: move to the next
+ * step. Surfacing the error here would force the loop into a catch that has
+ * no recovery; the error toast is already shown by `services/speech.ts`.
+ */
+function speakAwaitable(
+  dispatch: (options: { onDone: () => void; onStopped: () => void; onError: () => void }) => void,
+): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    dispatch({
+      onDone: settle,
+      onStopped: settle,
+      onError: settle,
+    });
+  });
+}
 
 export type StudySessionProps = {
   loading: boolean;
@@ -99,6 +132,25 @@ export function StudySession({
   // Whether the Flashcard-options modal (bell icon in the header) is open.
   const [optionsOpen, setOptionsOpen] = useState(false);
 
+  // Persistent "how many times the Repeat button cycles the card aloud
+  // before auto-rating Again". Setter is also exposed in the bell modal as
+  // a stepper. Mirror into a ref so the loop reads the latest value at
+  // start-of-loop time without re-running the loop's closures.
+  const { count: repeatCount, setCount: setRepeatCount } = useRepeatCount();
+  const repeatCountRef = useRef(repeatCount);
+  repeatCountRef.current = repeatCount;
+
+  // Repeat-loop state. The loop runs as an async function — these state
+  // values + refs let the rest of the UI react (button → Stop, tap-to-flip
+  // disabled, auto-play suppressed) while the loop walks through its
+  // iterations. `isRepeatingRef` is read by the auto-play `useEffect` and
+  // the PanResponder so a mid-render TTS dispatch doesn't fight the loop;
+  // `repeatCancelRef` is the cancellation flag the loop polls between awaits.
+  const [isRepeating, setIsRepeating] = useState(false);
+  const [repeatProgress, setRepeatProgress] = useState(0);
+  const isRepeatingRef = useRef(false);
+  const repeatCancelRef = useRef(false);
+
   // Stack of pre-rate snapshots, one per rating this session. Each entry
   // is the Card object as it was when we rated it (the queue array is
   // snapshotted once and never mutated when ratings happen, so the FSRS
@@ -151,6 +203,7 @@ export function StudySession({
         // is safe.
         onMoveShouldSetPanResponder: (_, g) =>
           !submittingRef.current &&
+          !isRepeatingRef.current &&
           (Math.abs(g.dx) > 8 || Math.abs(g.dy) > 8),
         onPanResponderGrant: () => {
           swipeX.setValue(0);
@@ -302,6 +355,12 @@ export function StudySession({
   useEffect(() => {
     if (!revealed || !currentLemma) return;
     if (!autoPlayRef.current) return;
+    // Suppress when the Repeat loop is running — the loop manages its own
+    // TTS calls and a competing speakGerman here would interrupt it. The
+    // loop sets `isRepeatingRef.current = true` BEFORE the first
+    // setRevealed(true), so this ref read is always up-to-date by the time
+    // the effect fires for the loop's flip.
+    if (isRepeatingRef.current) return;
     stopSpeech();
     speakGerman(spokenLemma(currentLemma, currentGender), {
       onStart: () => setIsPlayingWord(true),
@@ -428,6 +487,122 @@ export function StudySession({
   // example, etc.) is the answer revealed on the back — production-recall
   // direction, the user's preference.
   const frontWord = card.translationEn ?? card.lemma;
+  // Only offer the English speaker button when we actually have an English
+  // translation — falling back to the lemma would speak the German word
+  // with an English voice, which sounds wrong.
+  const hasEnglishFront = !!card.translationEn;
+
+  const replayWordEn = (e?: { stopPropagation?: () => void }) => {
+    e?.stopPropagation?.();
+    if (!hasEnglishFront || !frontWord) return;
+    // Don't interrupt the Repeat loop — it has its own TTS queue.
+    if (isRepeatingRef.current) return;
+    stopSpeech();
+    speakEnglish(frontWord);
+  };
+
+  /**
+   * Run the Repeat-X-times loop. Each iteration plays English → flips to the
+   * German side → plays German → flips back, with the front-back-front cycle
+   * pacing on `sleep()` between TTS calls so iOS has time to settle voice
+   * loading and React has time to commit the flip animation. On the LAST
+   * iteration we leave the card on the German side (the natural "you saw
+   * the answer" position) before auto-rating Again.
+   *
+   * Cancellation is poll-based: every `await` checkpoint reads
+   * `repeatCancelRef` and bails. The Stop button + tapping the card flip
+   * both set the cancel flag and call `stopSpeech()` — the in-flight TTS
+   * promise resolves via its `onStopped` callback, the loop sees the flag,
+   * `finally` clears state, and we return WITHOUT firing the auto-Again.
+   *
+   * Auto-Again policy: the loop is the "drill this aloud then push it back
+   * to the queue" affordance. Completing it without cancellation always
+   * fires onRate(Again). User-cancelled runs do NOT auto-rate, since the
+   * cancellation signal means "I changed my mind, don't advance."
+   *
+   * Suppression of the existing auto-play: `isRepeatingRef.current = true`
+   * is set synchronously BEFORE the first `setRevealed(true)`, so the
+   * auto-play effect's ref read bails on the loop's flips. See the effect.
+   */
+  const runRepeatLoop = async () => {
+    if (isRepeatingRef.current) return;
+    if (submittingRef.current) return;
+    if (!hasEnglishFront || !frontWord || !card.lemma) return;
+    const count = repeatCountRef.current;
+    if (count < 1) return;
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    isRepeatingRef.current = true;
+    repeatCancelRef.current = false;
+    setIsRepeating(true);
+    setRepeatProgress(0);
+    // Pin to the front so the very first English TTS lines up with the
+    // visible side, no matter where the user tapped Repeat from.
+    setRevealed(false);
+
+    const enText = frontWord;
+    const deText = spokenLemma(card.lemma, card.gender);
+
+    try {
+      for (let i = 0; i < count; i++) {
+        if (repeatCancelRef.current) break;
+        setRepeatProgress(i + 1);
+
+        // Tiny pre-roll so the front flip commits before we start speaking.
+        // 150ms is enough on iOS without feeling laggy.
+        await sleep(150);
+        if (repeatCancelRef.current) break;
+
+        // Speak English (front).
+        await speakAwaitable((opts) => speakEnglish(enText, opts));
+        if (repeatCancelRef.current) break;
+
+        // Flip to German.
+        setRevealed(true);
+        await sleep(250);
+        if (repeatCancelRef.current) break;
+
+        // Speak German (back).
+        await speakAwaitable((opts) => speakGerman(deText, opts));
+        if (repeatCancelRef.current) break;
+
+        // If there are more iterations, flip back to the front. On the
+        // last iteration, leave the card revealed (back side) — the user
+        // is about to get auto-rated and the back is the natural last
+        // visual.
+        if (i < count - 1) {
+          await sleep(300);
+          if (repeatCancelRef.current) break;
+          setRevealed(false);
+        }
+      }
+    } finally {
+      isRepeatingRef.current = false;
+      setIsRepeating(false);
+      setRepeatProgress(0);
+      // Make sure no orphan utterance keeps playing if a TTS callback
+      // dropped (shouldn't happen, but defensive — `Speech.stop()` is
+      // a no-op when nothing is queued).
+      stopSpeech();
+    }
+
+    // Loop completed naturally (not cancelled). Auto-rate Again to push
+    // the card back into the queue, matching the "drill aloud then again"
+    // intent.
+    if (!repeatCancelRef.current) {
+      // Small visual breath so the user sees the back fully settle before
+      // the next card slides in.
+      await sleep(200);
+      fireRatingHaptic(Rating.Again);
+      onRate(Rating.Again);
+    }
+  };
+
+  const cancelRepeat = () => {
+    if (!isRepeatingRef.current) return;
+    repeatCancelRef.current = true;
+    stopSpeech();
+  };
 
   const fireRatingHaptic = (rating: ReviewRating) => {
     if (rating === Rating.Again) {
@@ -686,7 +861,18 @@ export function StudySession({
         {...panResponder.panHandlers}>
         <Pressable
           style={styles.cardTapTarget}
-          onPress={() => setRevealed((r) => !r)}>
+          onPress={() => {
+            // During the Repeat loop the card auto-flips on its own.
+            // Tapping mid-loop would race the loop's setRevealed calls and
+            // leave the visible side out of sync with the TTS. Treat a tap
+            // as "cancel the loop" so the user has an out without a Stop
+            // tap — the user is reaching toward the card anyway.
+            if (isRepeatingRef.current) {
+              cancelRepeat();
+              return;
+            }
+            setRevealed((r) => !r);
+          }}>
           {revealed ? (
             <View style={styles.back}>
               <View style={styles.lemmaRow}>
@@ -748,10 +934,28 @@ export function StudySession({
             </View>
           ) : (
             <>
-              <ThemedText type="title" style={styles.lemma}>
-                {frontWord}
-              </ThemedText>
-              <ThemedText style={styles.tapHint}>tap to reveal</ThemedText>
+              <View style={styles.lemmaRow}>
+                <ThemedText type="title" style={styles.lemma}>
+                  {frontWord}
+                </ThemedText>
+                {hasEnglishFront && (
+                  <Pressable
+                    onPress={(e) => replayWordEn(e)}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Play pronunciation of ${frontWord}`}
+                    style={styles.wordSpeakBtn}>
+                    <IconSymbol name="speaker.wave.2.fill" size={22} color={tint} />
+                  </Pressable>
+                )}
+              </View>
+              {isRepeating ? (
+                <ThemedText style={styles.tapHint}>
+                  Repeating {repeatProgress} / {repeatCount} — tap card to stop
+                </ThemedText>
+              ) : (
+                <ThemedText style={styles.tapHint}>tap to reveal</ThemedText>
+              )}
             </>
           )}
         </Pressable>
@@ -839,13 +1043,13 @@ export function StudySession({
           RATINGS.map((r) => (
             <Pressable
               key={r.label}
-              disabled={submitting}
+              disabled={submitting || isRepeating}
               accessibilityRole="button"
               accessibilityLabel={`Rate ${r.label}`}
               style={[
                 styles.ratingBtn,
                 { backgroundColor: r.color },
-                submitting && styles.btnDisabled,
+                (submitting || isRepeating) && styles.btnDisabled,
               ]}
               onPress={() => {
                 fireRatingHaptic(r.rating);
@@ -854,12 +1058,37 @@ export function StudySession({
               <ThemedText style={styles.ratingLabel}>{r.label}</ThemedText>
             </Pressable>
           ))
-        ) : (
+        ) : isRepeating ? (
           <Pressable
-            style={[styles.detailBtn, { borderColor: tint }]}
-            onPress={() => router.push(`/card/${card.id}`)}>
-            <ThemedText>View details</ThemedText>
+            accessibilityRole="button"
+            accessibilityLabel="Stop the repeat loop"
+            style={[styles.detailBtn, { borderColor: Ratings.again }]}
+            onPress={cancelRepeat}>
+            <IconSymbol name="stop.fill" size={16} color={Ratings.again} />
+            <ThemedText style={[styles.actionInlineText, { color: Ratings.again }]}>
+              Stop
+            </ThemedText>
           </Pressable>
+        ) : (
+          <>
+            {hasEnglishFront && card.lemma && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Repeat ${repeatCount} times, then rate Again`}
+                style={[styles.detailBtn, { borderColor: tint }]}
+                onPress={runRepeatLoop}>
+                <IconSymbol name="repeat" size={16} color={tint} />
+                <ThemedText style={[styles.actionInlineText, { color: tint }]}>
+                  Repeat {repeatCount}×
+                </ThemedText>
+              </Pressable>
+            )}
+            <Pressable
+              style={[styles.detailBtn, { borderColor: tint }]}
+              onPress={() => router.push(`/card/${card.id}`)}>
+              <ThemedText>View details</ThemedText>
+            </Pressable>
+          </>
         )}
       </View>
 
@@ -920,6 +1149,45 @@ export function StudySession({
                 onValueChange={setShuffleCards}
                 trackColor={{ true: tint }}
               />
+            </View>
+
+            <View style={styles.optionsDivider} />
+
+            <View style={styles.optionsRow}>
+              <View style={styles.optionsLabels}>
+                <ThemedText type="defaultSemiBold">Repeat count</ThemedText>
+                <ThemedText style={styles.optionsHelp}>
+                  How many times the Repeat button cycles English → German aloud
+                  before auto-rating Again.
+                </ThemedText>
+              </View>
+              <View style={styles.stepperInline}>
+                <Pressable
+                  onPress={() => setRepeatCount(repeatCount - 1)}
+                  disabled={repeatCount <= 1}
+                  accessibilityRole="button"
+                  accessibilityLabel="Decrease repeat count"
+                  style={[
+                    styles.stepBtn,
+                    { borderColor: tint },
+                    repeatCount <= 1 && styles.btnDisabled,
+                  ]}>
+                  <ThemedText style={styles.stepBtnText}>−</ThemedText>
+                </Pressable>
+                <ThemedText style={styles.stepValueInline}>{repeatCount}</ThemedText>
+                <Pressable
+                  onPress={() => setRepeatCount(repeatCount + 1)}
+                  disabled={repeatCount >= 10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Increase repeat count"
+                  style={[
+                    styles.stepBtn,
+                    { borderColor: tint },
+                    repeatCount >= 10 && styles.btnDisabled,
+                  ]}>
+                  <ThemedText style={styles.stepBtnText}>+</ThemedText>
+                </Pressable>
+              </View>
             </View>
 
             <Pressable
@@ -1030,6 +1298,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   optionsDoneText: { fontWeight: '600' },
+  stepperInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  stepBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepBtnText: { fontSize: 20, fontWeight: '600' },
+  stepValueInline: {
+    fontSize: 18,
+    fontWeight: '600',
+    minWidth: 24,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+  },
   card: {
     flex: 1,
     borderWidth: 2,
@@ -1111,11 +1400,15 @@ const styles = StyleSheet.create({
   },
   detailBtn: {
     flex: 1,
+    flexDirection: 'row',
     paddingVertical: 14,
     borderRadius: 8,
     borderWidth: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
+  actionInlineText: { fontWeight: '600', fontSize: 15 },
   rail: { marginBottom: 12, gap: 6 },
   railLabel: { fontSize: 12, opacity: 0.6, textTransform: 'uppercase', letterSpacing: 0.5 },
   railRow: { gap: 8, paddingRight: 8 },
