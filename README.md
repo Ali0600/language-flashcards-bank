@@ -220,7 +220,7 @@ CLAUDE.md                Project conventions and gotchas (read first)
 ## Status
 
 - iOS-only, internal TestFlight (no external testers, no App Store release planned)
-- Runtime `1.0.2`, Build #7
+- Runtime `1.0.3`, Build #8
 - Distributed via EAS Build + OTA on the `production` channel
 - The bundled Gemini key works for personal use; if external sharing ever happens, route through a server-side proxy (Cloudflare Worker is the planned approach)
 
