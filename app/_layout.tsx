@@ -15,6 +15,7 @@ import { seedIfEmpty } from '@/db/seed';
 import { ThemedText } from '@/components/themed-text';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { DEFAULT_SETTINGS, getSetting, SettingKeys } from '@/services/settings';
+import { initGermanVoice } from '@/services/speech';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -56,6 +57,15 @@ export default function RootLayout() {
       );
       await setAudioModeAsync({ playsInSilentMode: playInSilentMode });
     })().catch((e) => console.error('setAudioModeAsync failed', e));
+  }, [success, seeded]);
+
+  // Resolve the user's chosen German voice once the DB is ready. Runs
+  // independently of the audio-mode effect above so a failure in either
+  // can't suppress the other. `initGermanVoice` swallows its own errors
+  // and degrades to the system voice, so there's nothing to surface here.
+  useEffect(() => {
+    if (!success || !seeded) return;
+    initGermanVoice();
   }, [success, seeded]);
 
   useEffect(() => {

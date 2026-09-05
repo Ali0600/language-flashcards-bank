@@ -9,6 +9,8 @@ export const SettingKeys = {
   autoCreateReverseCards: 'autoCreateReverseCards',
   autoPlayWord: 'autoPlayWord',
   shuffleCards: 'shuffleCards',
+  repeatCount: 'repeatCount',
+  germanVoiceId: 'germanVoiceId',
 } as const;
 
 export type SettingKey = (typeof SettingKeys)[keyof typeof SettingKeys];
@@ -19,6 +21,12 @@ export const DEFAULT_SETTINGS = {
   autoCreateReverseCards: false,
   autoPlayWord: true,
   shuffleCards: false,
+  repeatCount: 3,
+  // iOS voice identifier used for German playback. `null` = let the system
+  // pick (whatever de-DE voice iOS defaults to, usually the compact one).
+  // A non-null value is only honored while that voice is still installed —
+  // see `initGermanVoice` in services/speech.ts.
+  germanVoiceId: null as string | null,
 } as const satisfies Record<SettingKey, unknown>;
 
 export async function getSetting<T>(key: SettingKey, fallback: T): Promise<T> {

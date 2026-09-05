@@ -8,6 +8,7 @@ import {
   SettingKeys,
   type SettingKey,
 } from '@/services/settings';
+import { setGermanVoiceIdCached } from '@/services/speech';
 
 function useBooleanSetting(key: SettingKey, defaultValue: boolean) {
   const [enabled, setEnabledState] = useState<boolean>(defaultValue);
@@ -92,4 +93,86 @@ export function useAutoPlayWord() {
 
 export function useShuffleCards() {
   return useBooleanSetting(SettingKeys.shuffleCards, DEFAULT_SETTINGS.shuffleCards);
+}
+
+/**
+ * How many times the Repeat button cycles the front-back-front aloud before
+ * auto-rating Again. Clamped to [1, 10] by the setter — the bell-modal stepper
+ * enforces the same range, but the setter clamps defensively in case the value
+ * ever lands here from another path.
+ */
+export function useRepeatCount() {
+  const [count, setCountState] = useState<number>(DEFAULT_SETTINGS.repeatCount);
+  const [loading, setLoading] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      getSetting<number>(SettingKeys.repeatCount, DEFAULT_SETTINGS.repeatCount)
+        .then((v) => {
+          if (!cancelled) {
+            setCountState(clampRepeat(v));
+            setLoading(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
+
+  const update = useCallback(async (next: number) => {
+    const n = clampRepeat(Math.floor(next));
+    setCountState(n);
+    await setSetting(SettingKeys.repeatCount, n);
+  }, []);
+
+  return { count, loading, setCount: update };
+}
+
+function clampRepeat(n: number): number {
+  if (!Number.isFinite(n)) return DEFAULT_SETTINGS.repeatCount;
+  return Math.max(1, Math.min(10, n));
+}
+
+/**
+ * The iOS voice identifier used for German playback (`null` = system default).
+ *
+ * Setting it also updates the cache in `services/speech.ts` so the very next
+ * utterance uses the new voice — without that, playback would keep using the
+ * old voice until the next app launch re-ran `initGermanVoice`.
+ */
+export function useGermanVoiceId() {
+  const [voiceId, setVoiceIdState] = useState<string | null>(DEFAULT_SETTINGS.germanVoiceId);
+  const [loading, setLoading] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      getSetting<string | null>(SettingKeys.germanVoiceId, DEFAULT_SETTINGS.germanVoiceId)
+        .then((v) => {
+          if (!cancelled) {
+            setVoiceIdState(v);
+            setLoading(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
+
+  const update = useCallback(async (next: string | null) => {
+    setVoiceIdState(next);
+    setGermanVoiceIdCached(next);
+    await setSetting(SettingKeys.germanVoiceId, next);
+  }, []);
+
+  return { voiceId, loading, setVoiceId: update };
 }
