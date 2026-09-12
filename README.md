@@ -4,34 +4,34 @@
 
 Take a photo of German text. Get flashcards. Review with spaced repetition.
 
-iOS app built with React Native + Expo. Snap a picture of food packaging, a poster, a sign, anything with German on it — Gemini Vision extracts the words, analyzes them (lemma, gender, part of speech, translation, example), and turns them into FSRS-scheduled flashcards. Words seen in multiple photos rise to the top of the study queue.
+This is an iOS app built with React Native and Expo. Take a picture of anything with German on it: food packaging, a poster, a sign. Gemini Vision pulls out the words and analyzes each one (lemma, gender, part of speech, translation, example). The app turns them into flashcards scheduled by FSRS. Words that show up in several photos move to the top of your study queue.
 
 ## Features
 
 - **Photo capture pipeline.** Camera + photo-library picker → Gemini 2.5 Flash → structured JSON of words → deduped flashcards. All in one tap.
-- **Per-word checklist on Scan Results.** Uncheck words you don't want as flashcards. Optionally add the unchecked lemmas to a persistent **Ignore List** so future captures skip them automatically. Manage the list from Settings.
-- **Tappable bounding boxes on photos.** The photo viewer overlays a box around each detected word (Gemini Vision returns the coordinates) — tap a box to jump straight to that card.
-- **Auto-categorized folders, with recategorize.** Each photo is classified into one of 12 scene categories (food packaging, cooking, household, signs, transport, health, documents, clothing, electronics, outdoor, screenshots, other). Misclassified? Open the photo and pick a different folder. Library tab can group cards by folder or filter the flat Cards view by folder.
-- **Screenshots get app sub-folders.** When a photo lands in the Screenshots category, Gemini also identifies the app (Instagram, Twitter, Discord, etc.). The capture wizard gains a third step where you can confirm the suggestion, pick a different existing app, or skip. The Library > Folders > Screenshots tile drills into a grid of app sub-folders.
-- **FSRS-6 spaced repetition.** Real algorithm via [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs), not a homegrown SM-2.
-- **Study by folder or sub-folder.** From any folder (or app sub-folder), tap **Study** to review only that slice. Cards share their FSRS state with the global Study tab — folder Study is just a filter, not a separate schedule. The daily new-card limit is intentionally NOT applied to folder Study, so drilling in surfaces every in-scope card.
-- **Production-recall study direction.** Front shows the English translation; tap reveals the German lemma + gender + example sentences. The harder, more effective direction by default.
-- **Four-way swipe-to-rate.** Swipe left for **Again**, right for **Good**, up for **Hard**, down for **Easy**. Four-color overlay (red/green/amber/blue) fades in as you drag past the threshold, the card flings off, and the next card slides in from the opposite side. The 4-button row at the bottom still works for tap-to-rate.
-- **Undo last rating.** A back-arrow button on the left of the Study header pops the last rate, walks you back to the card, and restores its FSRS schedule + deletes the review log in one transaction. Per-session stack; disabled when there's nothing to undo or while a DB write is in flight.
-- **Shuffle cards.** Toggle in the Flashcard Options modal (bell icon, top-right of Study). Turning Shuffle ON inside the modal reshuffles the active queue when you tap Done; turning it OFF restores the FSRS-due order. Cards you've already rated stay in place; only the upcoming portion gets touched.
-- **Re-analyze cards (folder audit).** Each folder card-list view has a "Re-analyze cards" button that sends every card through Gemini in batches of 10. Two tabs of results: **Corrections** (per-issue checkboxes for lemma/gender/translation/example/plural fixes — pre-checked; Apply commits them transactionally) and **Review** (cards flagged as outside everyday vocabulary, tap to open and delete manually). The audit doubles as a **prompt-feedback loop**: when a class of mistake shows up in a re-analysis pass — e.g. Gemini picked "caring" for `pflegend` on a hand-cream label when "nourishing" was the natural English — that's a signal to harden the capture prompt (`services/vision.ts`) and the audit prompt (`services/audit.ts`) so future scans of the same domain don't make the same miss. Each iteration of the prompt is informed by what the audit surfaces on real cards.
-- **Reverse cards (EN → DE) — optional.** Toggle in Settings to auto-create an `en_to_de` sibling for every new card, or bulk-backfill all existing cards. Each direction has its own independent FSRS state.
-- **Notes / mnemonics per card.** Free-text field on the card detail screen, surfaced on the study back.
-- **Frequency-weighted new cards.** When new cards drip into your study queue, the ones you've actually seen most often in photos come first.
-- **Daily new-card limit.** Tunable in Settings (default 10/day) so a single 30-word photo doesn't bury you. (Global Study tab only; folder Study ignores it.)
-- **German pronunciation includes the article.** Flashcards auto-play `"der Tag"` (article + lemma) for nouns and just the lemma for non-nouns the moment you flip them — the article carries the gender, which is the part you can't infer from spelling. Toggle in Settings or in the Flashcard Options modal in the Study header. Inline speaker icon next to the lemma replays on tap with a pulsing halo; bottom Listen button plays the example sentence. Plays through the silent switch by default.
-- **Pick a better German voice.** iOS ships higher-quality German voices (Enhanced and Premium tiers — "Anna" at Premium is the best of them) but doesn't install them by default, which is why stock system speech sounds flat. Download one in iOS Settings → Accessibility → Spoken Content → Voices → German, then choose it in the app's Settings; tapping a voice auditions it immediately. The list ranks Premium above Enhanced above the basic compact voice, and falls back to the system default if a chosen voice is ever uninstalled.
-- **Consistent translation format per POS.** Verbs use the `to <verb>` infinitive marker (`to save`, not `save`); nouns are lowercase singular without an English article; adj/adv/prep/conj/pron are lowercase with no prefix; proper nouns keep their accepted capitalization. Enforced at capture time AND flagged retroactively by the audit feature.
-- **Draft-on-back for scan results.** If you back out of the scan-results screen without tapping Next, the captured photo + its cards + sightings are discarded (one-transaction cascade), so a re-scan of the same image doesn't double-count toward frequency.
-- **Pull-to-refresh** everywhere it makes sense.
-- **CSV export** of every card with sighting counts and FSRS state — shareable via the iOS share sheet.
-- **Stats.** Card counts by state (New / Learning / Review / Relearning), total reviews, reviews today, photos taken, most-sighted lemmas, plus a 12-week GitHub-style activity heatmap with current/longest streak counters.
-- **Card editing.** Fix a misclassification from Gemini directly in the card detail screen.
+- **Per-word checklist on Scan Results.** Uncheck any word you don't want as a flashcard. You can also add the unchecked lemmas to a persistent **Ignore List**, so future scans skip them. You manage the list from Settings.
+- **Tappable bounding boxes on photos.** The photo viewer draws a box around each detected word. Gemini Vision returns the coordinates. Tap a box to jump straight to that card.
+- **Auto-categorized folders, with recategorize.** Each photo goes into one of 12 scene categories (food packaging, cooking, household, signs, transport, health, documents, clothing, electronics, outdoor, screenshots, other). Wrong folder? Open the photo and pick another. The Library tab can group cards by folder, or filter the flat Cards view by folder.
+- **Screenshots get app sub-folders.** When a photo lands in the Screenshots category, Gemini also names the app (Instagram, Twitter, Discord, etc.). The capture wizard adds a third step. There you confirm the suggestion, pick another existing app, or skip. In Library > Folders > Screenshots, the tile opens a grid of app sub-folders.
+- **FSRS-6 spaced repetition.** The real algorithm via [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs), not a homegrown SM-2.
+- **Study by folder or sub-folder.** Open any folder (or app sub-folder) and tap **Study** to review only those cards. Cards share their FSRS state with the global Study tab. Folder Study is just a filter, not a separate schedule. The daily new-card limit does NOT apply to folder Study, on purpose. Drilling in shows every card in scope.
+- **Production-recall study direction.** The front shows the English translation. Tap to reveal the German lemma, gender and example sentences. This is the harder, more effective direction, and it is the default.
+- **Four-way swipe-to-rate.** Swipe left for **Again**, right for **Good**, up for **Hard**, down for **Easy**. A four-color overlay (red/green/amber/blue) fades in as you drag past the threshold. The card flings off and the next one slides in from the opposite side. The 4-button row at the bottom still works for tap-to-rate.
+- **Undo last rating.** A back-arrow button on the left of the Study header undoes the last rating. It walks you back to the card, restores its FSRS schedule and deletes the review log, all in one transaction. The undo stack lasts one session. The button is disabled when there is nothing to undo, or while a DB write is in flight.
+- **Shuffle cards.** Toggle it in the Flashcard Options modal (bell icon, top-right of Study). Turn Shuffle ON inside the modal and the active queue reshuffles when you tap Done. Turn it OFF and the FSRS-due order comes back. Cards you have already rated stay put; only the upcoming part changes.
+- **Re-analyze cards (folder audit).** Each folder card-list view has a "Re-analyze cards" button. It sends every card through Gemini in batches of 10. Results come in two tabs. **Corrections** lists per-issue checkboxes for lemma/gender/translation/example/plural fixes. They are pre-checked, and Apply commits them in one transaction. **Review** lists cards flagged as outside everyday vocabulary; tap one to open and delete it by hand. The audit also works as a **prompt-feedback loop**. When a re-analysis pass shows a class of mistake — for example, Gemini picked "caring" for `pflegend` on a hand-cream label when "nourishing" was the natural English — that is a signal to tighten the capture prompt (`services/vision.ts`) and the audit prompt (`services/audit.ts`). Future scans of the same domain then avoid the same miss. Each version of the prompt is shaped by what the audit finds on real cards.
+- **Reverse cards (EN → DE) — optional.** A Settings toggle auto-creates an `en_to_de` sibling for every new card. You can also backfill all existing cards at once. Each direction keeps its own FSRS state.
+- **Notes / mnemonics per card.** A free-text field on the card detail screen. It shows on the back of the card during study.
+- **Frequency-weighted new cards.** When new cards enter your study queue, the ones you have seen most often in photos come first.
+- **Daily new-card limit.** Set it in Settings (default 10/day), so one 30-word photo does not bury you. (Global Study tab only; folder Study ignores it.)
+- **German pronunciation includes the article.** The moment you flip a card, it auto-plays `"der Tag"` (article + lemma) for nouns, and just the lemma for other words. The article carries the gender, which you cannot guess from spelling. Toggle it in Settings, or in the Flashcard Options modal in the Study header. An inline speaker icon next to the lemma replays on tap, with a pulsing halo. The Listen button at the bottom plays the example sentence. Audio plays through the silent switch by default.
+- **Pick a better German voice.** iOS has higher-quality German voices (Enhanced and Premium tiers — "Anna" at Premium is the best of them), but it does not install them by default. That is why stock system speech sounds flat. Download one in iOS Settings → Accessibility → Spoken Content → Voices → German, then choose it in the app's Settings. Tap a voice to hear it right away. The list ranks Premium above Enhanced, and Enhanced above the basic compact voice. If a chosen voice is ever uninstalled, the app falls back to the system default.
+- **Consistent translation format per POS.** Verbs use the `to <verb>` infinitive marker (`to save`, not `save`). Nouns are lowercase singular with no English article. Words tagged adj/adv/prep/conj/pron are lowercase with no prefix. Proper nouns keep their usual capitalization. The rules apply at capture time AND the audit feature flags older cards that break them.
+- **Draft-on-back for scan results.** If you leave the scan-results screen without tapping Next, the app discards the captured photo, its cards and its sightings in one transaction. So re-scanning the same image does not double-count toward frequency.
+- **Pull-to-refresh** wherever it makes sense.
+- **CSV export** of every card, with sighting counts and FSRS state. Share it via the iOS share sheet.
+- **Stats.** Card counts by state (New / Learning / Review / Relearning), total reviews, reviews today, photos taken and most-sighted lemmas. Plus a 12-week GitHub-style activity heatmap with current and longest streak counters.
+- **Card editing.** Fix a wrong Gemini result right in the card detail screen.
 - **Dark mode.**
 
 ## Tech stack
@@ -84,15 +84,15 @@ iOS app built with React Native + Expo. Snap a picture of food packaging, a post
 
 ### Data model (Drizzle, see [db/schema.ts](db/schema.ts))
 
-- `photos` — id, taken_at, image_uri (local), raw_ocr_text, category (one of 12 fixed slugs), sub_category_id (optional second dimension, used today only for Screenshots → specific apps)
-- `cards` — id, lemma, gender, pos, translation, example DE/EN, plural, notes, **direction** (`de_to_en` | `en_to_de`), plus flat FSRS state columns. Compound unique on `(lemma, direction)` so a forward and reverse can coexist
+- `photos` — id, taken_at, image_uri (local), raw_ocr_text, category (one of 12 fixed slugs), sub_category_id (an optional second dimension; today it is used only for Screenshots → specific apps)
+- `cards` — id, lemma, gender, pos, translation, example DE/EN, plural, notes, **direction** (`de_to_en` | `en_to_de`), plus flat FSRS state columns. A compound unique key on `(lemma, direction)` lets a forward and a reverse card coexist
 - `card_sightings` — one row per word-in-photo (cardId, photoId, surfaceForm, seenAt, **bbox** — JSON `[ymin, xmin, ymax, xmax]` normalized 0–1000, nullable)
-- `review_logs` — full FSRS audit trail per rating
-- `settings` — JSON-serialized key/value store for `dailyNewCardLimit`, `playInSilentMode`, `autoCreateReverseCards`
-- `ignored_words` — lemmas the user has chosen to skip in future scans (case-insensitive primary key via `COLLATE NOCASE`)
-- `sub_categories` — per-parent app/brand tags. Today scoped to `parent_slug='screenshots'` (Instagram, Twitter, Discord, etc.). Case-insensitive unique on `(parent_slug, name)`.
+- `review_logs` — the full FSRS audit trail, one row per rating
+- `settings` — a JSON-serialized key/value store for `dailyNewCardLimit`, `playInSilentMode`, `autoCreateReverseCards`
+- `ignored_words` — lemmas you chose to skip in future scans (case-insensitive primary key via `COLLATE NOCASE`)
+- `sub_categories` — per-parent app/brand tags. Today they are scoped to `parent_slug='screenshots'` (Instagram, Twitter, Discord, etc.). Case-insensitive unique on `(parent_slug, name)`.
 
-A card's frequency score is just `COUNT(*)` over its sightings — computed at query time, not denormalized.
+A card's frequency score is just `COUNT(*)` over its sightings. It is computed at query time, not stored.
 
 ### Routing
 
@@ -119,8 +119,8 @@ app/ignored.tsx          → Ignored words list (modal)
 ### Prerequisites
 
 - Node 20+ (managed via [fnm](https://github.com/Schniz/fnm) — add `eval "$(fnm env --shell zsh)"` to `~/.zshrc`)
-- Xcode + iOS Simulator (or a registered physical iPhone)
-- An [EAS account](https://expo.dev/) (for cloud builds and OTAs)
+- Xcode and the iOS Simulator (or a registered physical iPhone)
+- An [EAS account](https://expo.dev/) for cloud builds and OTAs
 - A free [Google AI Studio](https://aistudio.google.com/) API key for Gemini
 
 ### First-time setup
@@ -147,13 +147,13 @@ eas env:create production --name EXPO_PUBLIC_GEMINI_API_KEY --value <your-key> -
 npx expo start --dev-client
 ```
 
-This requires a [development build](https://docs.expo.dev/develop/development-builds/introduction/) — the project uses native modules (op-sqlite, expo-camera, expo-speech) that Expo Go doesn't include. To produce a dev build for the simulator:
+You need a [development build](https://docs.expo.dev/develop/development-builds/introduction/) for this. The project uses native modules (op-sqlite, expo-camera, expo-speech) that Expo Go does not include. To make a dev build for the simulator:
 
 ```bash
 eas build --profile development --platform ios
 ```
 
-Install the resulting `.app` in the iOS Simulator, then `npx expo start --dev-client` to attach Metro.
+Install the resulting `.app` in the iOS Simulator. Then run `npx expo start --dev-client` to attach Metro.
 
 ## Development workflow
 
@@ -174,20 +174,20 @@ Install the resulting `.app` in the iOS Simulator, then `npx expo start --dev-cl
 
 ### OTA vs. native rebuilds
 
-A change is **native** if it would modify `ios/` after `npx expo prebuild`:
+A change is **native** if it would change `ios/` after `npx expo prebuild`:
 
-- Adding/removing native modules
+- Adding or removing native modules
 - Changing `Info.plist`, entitlements, `bundleIdentifier`, or `infoPlist` keys
-- Adding/changing Expo config plugins
+- Adding or changing Expo config plugins
 - Upgrading Expo SDK or React Native majors
 
-Native changes require a new EAS build + TestFlight install. **Always bump the version in `app.config.ts`** when shipping a native change — `runtimeVersion: { policy: 'appVersion' }` means each version is its own OTA channel.
+A native change needs a new EAS build and a TestFlight install. **Always bump the version in `app.config.ts`** when you ship a native change. `runtimeVersion: { policy: 'appVersion' }` means each version is its own OTA channel.
 
-Anything else — UI tweaks, prompt edits, schema migrations (Drizzle migrations bundle into the JS via [babel-plugin-inline-import](https://www.npmjs.com/package/babel-plugin-inline-import)) — ships via `eas update --branch production --platform ios`. **Always pass `--platform ios`** — the default `--platform all` crashes because op-sqlite's web fallback imports `better-sqlite3`.
+Everything else ships via `eas update --branch production --platform ios`: UI tweaks, prompt edits and schema migrations. (Drizzle migrations are bundled into the JS by [babel-plugin-inline-import](https://www.npmjs.com/package/babel-plugin-inline-import).) **Always pass `--platform ios`.** The default `--platform all` crashes, because op-sqlite's web fallback imports `better-sqlite3`.
 
 ### Testing
 
-Pure helpers live in single-purpose modules (`services/csv.ts`, `services/pipeline-helpers.ts`, `services/stoplist.ts`, etc.) so they can be unit-tested without pulling in native modules. Tests live next to the source:
+Pure helpers live in single-purpose modules (`services/csv.ts`, `services/pipeline-helpers.ts`, `services/stoplist.ts`, etc.). That way you can unit-test them without loading native modules. Tests sit next to the source:
 
 ```
 services/__tests__/
@@ -201,7 +201,7 @@ constants/__tests__/
   folders.test.ts
 ```
 
-Screen and integration tests aren't worth the mocking cost in this codebase — TypeScript + ESLint + the pure-helper tests catch most regressions.
+Screen and integration tests are not worth the mocking cost in this codebase. TypeScript, ESLint and the pure-helper tests catch most regressions.
 
 ### Project structure
 
@@ -222,8 +222,17 @@ CLAUDE.md                Project conventions and gotchas (read first)
 
 - iOS-only, internal TestFlight (no external testers, no App Store release planned)
 - Runtime `1.0.3`, Build #8
-- Distributed via EAS Build + OTA on the `production` channel
-- The bundled Gemini key works for personal use; if external sharing ever happens, route through a server-side proxy (Cloudflare Worker is the planned approach)
+- Shipped via EAS Build + OTA on the `production` channel
+- The bundled Gemini key is fine for personal use. If the app is ever shared outside, route calls through a server-side proxy (a Cloudflare Worker is the planned approach)
+
+## Experience Gained
+
+- Built an iOS app on Expo SDK 54 and React Native 0.81 with 15 Expo Router screens, op-sqlite, and Drizzle ORM with 9 generated migrations bundled into the JS at build time.
+- Wired Gemini 2.5 Flash through `@google/genai` to turn photos into structured JSON: images shrink to at most 1600px before upload, and a re-analysis audit sends cards in batches of 10.
+- Scheduled reviews with the FSRS algorithm via `ts-fsrs` ^5.3.2, with a default daily new-card limit of 10 and a repeat-playback loop you can set from 1 to 10 times.
+- Ranked iOS German voices in 3 tiers (Premium > Enhanced > compact) by parsing Apple's voice identifiers, because the Expo enum labels Premium voices as Default.
+- Gated every push and PR with 3 CI checks on GitHub Actions (`tsc`, ESLint, 148 Jest unit tests across 12 files), with both actions SHA-pinned and `permissions: contents: read`.
+- Shipped through EAS Build and EAS Update OTA: 4 build profiles in `eas.json` and a runtime version tied to the app version (`1.0.3`), so JS-only changes and schema migrations reach the phone without a rebuild.
 
 ## License
 
